@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Crave Saga</title>
+
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 0;
+      flex-wrap: wrap;
+      background-color: #313338;
+    }
+
+    .banner {
+      background-color: #232428;
+      padding: 20px;
+      text-align: center;
+      width: 100%;
+      margin-bottom: 80px;
+    }
+
+    .banner h1 {
+      color: #fff;
+      font-size: 32px;
+      margin: 0;
+    }
+
+    .icon-button {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 150px;
+      height: 120px;
+      background-color: #232428;
+      border-radius: 10px;
+      margin: 10px;
+      padding: 16px;
+      box-sizing: border-box;
+      text-align: center;
+      color: #fff;
+      border: none;
+      /* Remove button's default border */
+      outline: none;
+      /* Remove button's default outline */
+      cursor: pointer;
+      /* Add cursor pointer */
+    }
+
+    .icon-button:focus {
+      /* Add focus style */
+      box-shadow: 0 0 0 2px #fff;
+    }
+
+    .icon-button:hover {
+      /* Add hover style */
+      background-color: #3a3d40;
+    }
+
+    .icon-button:active {
+      /* Add active style */
+      background-color: #1f2022;
+    }
+
+    .icon {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+
+    .text {
+      font-size: 14px;
+    }
+
+    .icon img {
+      max-width: 100%;
+      max-height: 100%;
+    }
+
+    .align-middle {
+      vertical-align: middle;
+    }
+
+    .img-shadow {
+      filter: drop-shadow(0 0 2px rgba(255, 255, 255));
+    }
+
+    .img-shadow-nutaku-com {
+      filter: drop-shadow(0 0 5px #31adff);
+    }
+
+    .img-shadow-nutaku-net {
+      filter: drop-shadow(0 0 5px #e53155);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="banner">
+    <h1>Select a provider</h1>
+  </div>
+
+  <button id="erolabsButton" class="icon-button" onclick="erolabs()">
+    <i class="icon"><img src="./logos/erolabs.webp" /></i>
+    <span class="text">EROLABS</span>
+    <span class="type-text">(NSFW)</span>
+  </button>
+  <button class="icon-button" onclick="johrenSfw()">
+    <i class="icon"><img src="./logos/johren.svg" /></i>
+    <span class="text">Johren</span>
+    <span class="type-text">(SFW)</span>
+  </button>
+  <button class="icon-button" onclick="johrenNsfw()">
+    <i class="icon"><img src="./logos/johren_adult.svg" /></i>
+    <span class="text">Johren 18+</span>
+    <span class="type-text">(NSFW)</span>
+  </button>
+  <button class="icon-button" onclick="nutakuCom()">
+    <i class="icon">
+      <img width="120" class="img-shadow-nutaku-com align-middle" src="./logos/nutaku.svg" />
+    </i>
+    <span class="text">nutaku.com</span>
+    <span class="type-text">(SFW)</span>
+  </button>
+  <button class="icon-button" onclick="nutakuNet()">
+    <i class="icon">
+      <img width="120" class="img-shadow-nutaku-net align-middle" src="./logos/nutaku.svg" />
+    </i>
+    <span class="text">nutaku.net</span>
+    <span class="type-text">(NSFW)</span>
+  </button>
+  <button class="icon-button" onclick="dmm()">
+    <i class="icon"><img class="img-shadow" src="./logos/dmm.svg" /></i>
+    <span class="text">DMM</span>
+    <span class="type-text">(SFW)</span>
+  </button>
+  <button class="icon-button" onclick="fanza()">
+    <i class="icon"><img src="./logos/fanza.svg" /></i>
+    <span class="text">FANZA</span>
+    <span class="type-text">(NSFW)</span>
+  </button>
+  <script>
+    // ====== Provider Functions (defined first so all onclick are ready immediately) ======
+
+    const erolabUrls = [
+      'www.ero-labs.com',
+      'game.ero-labs.shop',
+      'game.ero-labs.website',
+      'game.erolabs.cloud',
+      'game.erolabs.net',
+    ];
+
+    const PROVIDER_REGEX_FIELDS = Object.freeze(['loginRegex', 'pageRegex', 'gameRegex', 'wrapperRegex']);
+
+    function createRegexContract(source, flags) {
+      return {
+        source: typeof source === 'string' ? source : '',
+        flags: typeof flags === 'string' ? flags : '',
+      };
+    }
+
+    function createCloudfrontClientRegex(channel) {
+      var safeChannel = (channel === 'r' || channel === 'w') ? channel : 'g';
+      return createRegexContract(
+        'https:\\/\\/[^/]+\\.cloudfront\\.net\\/' + safeChannel + '\\/client\\/[^/?#]+\\/index[^/?#]*\\.html(?:[?#].*)?$'
+      );
+    }
+
+    function createNutakuPlayFrameRegex(slug) {
+      var safeSlug = typeof slug === 'string' && slug ? slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : 'crave-saga';
+      return createRegexContract('https:\\/\\/gi\\.nutaku\\.(?:com|net)\\/play-frame\\/' + safeSlug + '\\/');
+    }
+
+    const providerConfigs = {
+      johrenSfw: {
+        provider: 'Crave Saga (Johren)',
+        cookieHosts: ['www.johren.net', 'johren.net'],
+        entryUrl: 'https://www.johren.net/games/cravesaga-en/play',
+        loginRegex: [
+          createRegexContract('login\\.html'),
+          createRegexContract('https:\\/\\/(?:www\\.)?johren\\.net\\/login(?:[/?#]|$)'),
+        ],
+        pageRegex: [createRegexContract('cravesaga-en\\/play')],
+        gameRegex: [
+          createRegexContract('https:\\/\\/johren-client-en\\.g\\.cravesaga\\.johren\\.games'),
+          createCloudfrontClientRegex('g'),
+        ],
+        wrapperRegex: [createRegexContract('osapi\\.johren\\.net')],
+      },
+      johrenNsfw: {
+        provider: 'Crave Saga X (Johren)',
+        cookieHosts: ['www.johren.games', 'johren.games'],
+        entryUrl: 'https://www.johren.games/games/cravesagax-en/play',
+        loginRegex: [
+          createRegexContract('login\\.html'),
+          createRegexContract('https:\\/\\/(?:www\\.)?johren\\.games\\/login(?:[/?#]|$)'),
+        ],
+        pageRegex: [createRegexContract('cravesagax-en\\/play')],
+        gameRegex: [
+          createRegexContract('https:\\/\\/johren-client-en\\.r\\.cravesaga\\.johren\\.games'),
+          createCloudfrontClientRegex('r'),
+        ],
+        wrapperRegex: [createRegexContract('osapi\\.johren\\.net')],
+      },
+      nutakuCom: {
+        provider: 'Crave Saga (nutaku.com)',
+        cookieHosts: ['www.nutaku.com', 'nutaku.com'],
+        entryUrl: 'https://www.nutaku.com/games/crave-saga/play/',
+        loginRegex: [createRegexContract('crave-saga\\/?$')],
+        pageRegex: [createRegexContract('crave-saga\\/play')],
+        gameRegex: [
+          createRegexContract('https:\\/\\/nutaku-client-en\\.g\\.cravesaga\\.johren\\.games'),
+          createNutakuPlayFrameRegex('crave-saga'),
+          createCloudfrontClientRegex('g'),
+        ],
+        wrapperRegex: [
+          createRegexContract('osapi\\.nutaku\\.com'),
+          createNutakuPlayFrameRegex('crave-saga'),
+        ],
+      },
+      nutakuNet: {
+        provider: 'Crave Saga X (nutaku.net)',
+        cookieHosts: ['www.nutaku.net', 'nutaku.net'],
+        entryUrl: 'https://www.nutaku.net/games/crave-saga-x/play/',
+        loginRegex: [createRegexContract('crave-saga-x\\/?$')],
+        pageRegex: [createRegexContract('crave-saga-x\\/play')],
+        gameRegex: [
+          createRegexContract('https:\\/\\/nutaku-client-en\\.r\\.cravesaga\\.johren\\.games'),
+          createNutakuPlayFrameRegex('crave-saga-x'),
+          createCloudfrontClientRegex('r'),
+        ],
+        wrapperRegex: [
+          createRegexContract('osapi\\.nutaku\\.com'),
+          createNutakuPlayFrameRegex('crave-saga-x'),
+        ],
+      },
+      dmm: {
+        provider: 'Crave Saga (DMM)',
+        cookieHosts: ['www.dmm.com', 'dmm.com'],
+        entryUrl: 'https://play.games.dmm.com/game/cravesaga/',
+        loginRegex: [createRegexContract('service\\/login')],
+        pageRegex: [createRegexContract('(play|game)\\/cravesaga')],
+        gameRegex: [
+          createRegexContract('https:\\/\\/gg-client-w\\.crave-saga\\.net'),
+          createRegexContract('https:\\/\\/gg-dmm-gadgets\\.crave-saga\\.net'),
+          createCloudfrontClientRegex('w'),
+        ],
+        wrapperRegex: [createRegexContract('osapi\\.dmm\\.com')],
+      },
+      fanza: {
+        provider: 'Crave Saga X (FANZA GAMES)',
+        cookieHosts: ['www.dmm.co.jp', 'dmm.co.jp'],
+        entryUrl: 'https://play.games.dmm.co.jp/game/cravesagax',
+        loginRegex: [createRegexContract('service\\/login')],
+        pageRegex: [createRegexContract('(play|game)\\/cravesagax')],
+        gameRegex: [
+          createRegexContract('https:\\/\\/gg-client-r\\.crave-saga\\.net'),
+          createRegexContract('https:\\/\\/gg-dmm-gadgets\\.crave-saga\\.net'),
+          createCloudfrontClientRegex('r'),
+        ],
+        wrapperRegex: [createRegexContract('osapi\\.dmm\\.com')],
+      },
+    };
+
+    function getElectronAPI() { return window.electronAPI || null; }
+
+    function getErolabsUrl() {
+      try {
+        return localStorage.getItem('erolabsUrl') || 'www.ero-labs.com';
+      } catch (e) {
+        return 'www.ero-labs.com';
+      }
+    }
+
+    function getProviderConfig(providerKey) {
+      if (providerKey === 'erolabs') {
+        var erolabsUrl = getErolabsUrl();
+        return {
+          provider: 'Crave Saga X (EROLABS)',
+          cookieHosts: [erolabsUrl],
+          loginRegex: [createRegexContract('login\\.html')],
+          pageRegex: [
+            createRegexContract('webGL\\.html\\?id=47'),
+            createRegexContract('game\\.html\\?id=47'),
+          ],
+          gameRegex: [
+            createRegexContract('https:\\/\\/erolabs-client-(?:ch|en)\\.r\\.cravesaga\\.johren\\.games'),
+            createRegexContract('\\.cloudfront\\.net'),
+          ],
+          wrapperRegex: [],
+          langs: [
+            { id: 'en', name: 'English', url: 'https://' + erolabsUrl + '/en/game.html?id=47' },
+            { id: 'cn', name: '简体中文', url: 'https://' + erolabsUrl + '/cn/game.html?id=47' },
+            { id: 'zh', name: '繁體中文', url: 'https://' + erolabsUrl + '/zh/game.html?id=47' },
+          ],
+          entryUrl: 'https://' + erolabsUrl + '/game.html?id=47',
+        };
+      }
+      return providerConfigs[providerKey] || null;
+    }
+
+    function getSavedLanguage(providerKey) {
+      try {
+        return localStorage.getItem('providerLang:' + providerKey);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function getSavedDefaultProvider() {
+      try {
+        return localStorage.getItem('defaultProvider');
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function persistDefaultProvider(providerKey) {
+      try {
+        if (typeof providerKey === 'string' && providerKey) {
+          localStorage.setItem('defaultProvider', providerKey);
+        } else {
+          localStorage.removeItem('defaultProvider');
+        }
+      } catch (e) { }
+    }
+
+    async function getPreferredLanguage(providerKey) {
+      var api = getElectronAPI();
+      if (api && typeof api.getProviderLanguagePreference === 'function') {
+        try {
+          var langFromMain = await api.getProviderLanguagePreference(providerKey);
+          if (langFromMain) return langFromMain;
+        } catch (e) { }
+      }
+      return getSavedLanguage(providerKey);
+    }
+
+    function resolveLanguageConfig(langs, preferredLangId) {
+      if (!Array.isArray(langs) || langs.length === 0) return null;
+      if (preferredLangId) {
+        for (var i = 0; i < langs.length; i += 1) {
+          if (langs[i] && langs[i].id === preferredLangId) {
+            return langs[i];
+          }
+        }
+      }
+      return langs[0];
+    }
+
+    async function persistLanguagePreference(providerKey, langId) {
+      try {
+        localStorage.setItem('providerLang:' + providerKey, langId);
+      } catch (e) { }
+
+      var api = getElectronAPI();
+      if (api && typeof api.setProviderLanguagePreference === 'function') {
+        try {
+          await api.setProviderLanguagePreference(providerKey, langId);
+        } catch (e) { }
+      }
+    }
+
+    async function selectProvider(providerKey, forceLangId) {
+      var config = getProviderConfig(providerKey);
+      if (!config) return;
+      persistDefaultProvider(providerKey);
+
+      var hasLangs = Array.isArray(config.langs) && config.langs.length > 0;
+      var selectedLang = null;
+      var entryUrl = config.entryUrl;
+
+      if (hasLangs) {
+        var preferredLang = forceLangId || await getPreferredLanguage(providerKey);
+        selectedLang = resolveLanguageConfig(config.langs, preferredLang);
+        if (!selectedLang) return;
+        entryUrl = selectedLang.url;
+        await persistLanguagePreference(providerKey, selectedLang.id);
+      }
+
+      if (typeof entryUrl !== 'string' || !entryUrl) return;
+
+      var api = getElectronAPI();
+      if (api && typeof api.setGameProvider === 'function') {
+        try {
+          var payload = {
+            provider: config.provider,
+            cookieHosts: config.cookieHosts,
+            entryUrl: entryUrl,
+            defaultProvider: providerKey,
+            success: false,
+          };
+          for (var i = 0; i < PROVIDER_REGEX_FIELDS.length; i += 1) {
+            var fieldName = PROVIDER_REGEX_FIELDS[i];
+            var fieldValue = config[fieldName];
+            payload[fieldName] = Array.isArray(fieldValue) ? fieldValue.map(function (item) {
+              return {
+                source: item && typeof item.source === 'string' ? item.source : '',
+                flags: item && typeof item.flags === 'string' ? item.flags : '',
+              };
+            }) : [];
+          }
+          if (hasLangs) {
+            payload.lang = selectedLang.id;
+            payload.langs = config.langs;
+          }
+          await api.setGameProvider(payload);
+        } catch (error) {
+          console.error('[Selector] Failed to set provider state:', error);
+        }
+      }
+
+      window.location.href = entryUrl;
+    }
+
+    window.erolabsSelector = function (ev) {
+      ev.preventDefault();
+      var currentUrl = getErolabsUrl();
+      var newUrl = prompt('Enter custom URL for EROLABS:\nOptions:\n' + erolabUrls.join('\n'), currentUrl);
+      if (newUrl) {
+        try { localStorage.setItem('erolabsUrl', newUrl); } catch (e) { }
+      }
+    };
+
+    window.erolabs = function () { void selectProvider('erolabs'); };
+    window.johrenSfw = function () { void selectProvider('johrenSfw'); };
+    window.johrenNsfw = function () { void selectProvider('johrenNsfw'); };
+    window.nutakuCom = function () { void selectProvider('nutakuCom'); };
+    window.nutakuNet = function () { void selectProvider('nutakuNet'); };
+    window.dmm = function () { void selectProvider('dmm'); };
+    window.fanza = function () { void selectProvider('fanza'); };
+
+    // ====== Auto-redirect on load (safe, won't block function definitions above) ======
+    document.addEventListener('DOMContentLoaded', async function () {
+      try {
+        var erolabsBtn = document.querySelector('#erolabsButton');
+        if (erolabsBtn) erolabsBtn.addEventListener('contextmenu', erolabsSelector, false);
+
+        var urlParams = new URLSearchParams(window.location.search);
+        var reselect = urlParams.get('reselect');
+        var api = getElectronAPI();
+        if (reselect) {
+          if (api && typeof api.clearProviderState === 'function') {
+            await api.clearProviderState({ keepRuntimeProvider: false });
+          }
+          return;
+        }
+
+        if (!api || typeof api.getGameProviderState !== 'function') return;
+
+        var state = await api.getGameProviderState();
+        var savedDefaultProvider = getSavedDefaultProvider();
+        if (savedDefaultProvider && getProviderConfig(savedDefaultProvider)) {
+          void selectProvider(savedDefaultProvider);
+          return;
+        }
+        if (savedDefaultProvider) persistDefaultProvider(null);
+        if (!state || state.success !== true) return;
+
+        if (typeof state.entryUrl === 'string' && state.entryUrl) {
+          window.location.href = state.entryUrl;
+          return;
+        }
+
+        if (typeof state.defaultProvider === 'string' && state.defaultProvider) {
+          void selectProvider(state.defaultProvider);
+        }
+      } catch (e) {
+        console.error('[Selector] Init error:', e);
+      }
+    });
+  </script>
+</body>
+
+</html>

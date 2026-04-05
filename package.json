@@ -1,0 +1,25 @@
+{
+  "name": "cravesaga",
+  "version": "0.1.0",
+  "description": "Crave Saga Electron Client",
+  "author": "Crave Saga Contributors",
+  "main": "app/electron-main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win --x64 --config electron-builder.win.json",
+    "dist:win:dir": "electron-builder --win --x64 --dir --config electron-builder.win.json",
+    "dist:mac": "ELECTRON_BUILDER_CACHE=.cache/electron-builder CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --config electron-builder.mac.json",
+    "dist:mac:dir": "ELECTRON_BUILDER_CACHE=.cache/electron-builder CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir --config electron-builder.mac.json"
+  },
+  "dependencies": {
+    "@msgpack/msgpack": "^3.0.0-beta2",
+    "decompress-response": "^7.0.0",
+    "luxon": "^3.4.4",
+    "mime-types": "^2.1.35",
+    "proxy-agent": "^6.4.0"
+  },
+  "devDependencies": {
+    "electron": "^40.7.0",
+    "electron-builder": "^26.8.1"
+  }
+}
