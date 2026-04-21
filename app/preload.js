@@ -514,59 +514,55 @@ window.addEventListener('DOMContentLoaded', () => {
                         var scene = cc.director.getScene();
                         if (!scene) return false;
 
-                        function invokeNodeLongPress(node) {
-                            if (!Array.isArray(node._components)) return false;
-                            for (var i = 0; i < node._components.length; i++) {
-                                var component = node._components[i];
-                                if (!component) continue;
-                                var handler = getLongPressHandler(component);
-                                if (typeof handler !== 'function') continue;
-                                try {
-                                    handler.apply(component);
-                                    return true;
-                                } catch (e) {}
-                            }
-                            return false;
-                        }
+                        var candidates = [];
 
-                        function recursive(node) {
-                            if (!node) return false;
+                        function gatherCandidates(node) {
+                            if (!node || !node._activeInHierarchy) return;
 
                             var children = node._children;
-                            if (Array.isArray(children) && children.length > 0) {
-                                var orderedChildren = children.slice();
-                                orderedChildren.sort(function(a, b) {
-                                    var zA = Number(a && (a._localZOrder != null ? a._localZOrder : a.zIndex));
-                                    var zB = Number(b && (b._localZOrder != null ? b._localZOrder : b.zIndex));
-                                    if (isFinite(zA) && isFinite(zB) && zA !== zB) {
-                                        return zB - zA;
-                                    }
-                                    var orderA = Number(a && a._orderOfArrival);
-                                    var orderB = Number(b && b._orderOfArrival);
-                                    if (isFinite(orderA) && isFinite(orderB) && orderA !== orderB) {
-                                        return orderB - orderA;
-                                    }
-                                    return 0;
-                                });
-                                for (var i = 0; i < orderedChildren.length; i++) {
-                                    if (recursive(orderedChildren[i])) return true;
+                            if (Array.isArray(children)) {
+                                for (var i = 0; i < children.length; i++) {
+                                    gatherCandidates(children[i]);
                                 }
                             }
 
-                            var containsPosition = false;
+                            var bbox = null;
                             try {
-                                containsPosition =
-                                    !!node._activeInHierarchy &&
-                                    node.getBoundingBoxToWorld().contains(mousePosition);
-                            } catch (e) {
-                                containsPosition = false;
-                            }
+                                bbox = node.getBoundingBoxToWorld();
+                            } catch (e) { return; }
+                            if (!bbox || !bbox.contains(mousePosition)) return;
 
-                            if (!containsPosition) return false;
-                            return invokeNodeLongPress(node);
+                            if (!Array.isArray(node._components)) return;
+                            for (var j = 0; j < node._components.length; j++) {
+                                var component = node._components[j];
+                                if (!component) continue;
+                                var handler = getLongPressHandler(component);
+                                if (typeof handler !== 'function') continue;
+                                candidates.push({
+                                    component: component,
+                                    handler: handler,
+                                    area: bbox.width * bbox.height,
+                                    distSq: Math.pow(bbox.x + bbox.width * 0.5 - mousePosition.x, 2) +
+                                            Math.pow(bbox.y + bbox.height * 0.5 - mousePosition.y, 2),
+                                });
+                                break;
+                            }
                         }
 
-                        return recursive(scene);
+                        gatherCandidates(scene);
+                        if (candidates.length === 0) return false;
+
+                        candidates.sort(function(a, b) {
+                            var areaDiff = a.area - b.area;
+                            if (Math.abs(areaDiff) > 100) return areaDiff;
+                            return a.distSq - b.distSq;
+                        });
+
+                        try {
+                            candidates[0].handler.apply(candidates[0].component);
+                            return true;
+                        } catch (e) {}
+                        return false;
                     }
 
                     function resolveViewportRect(rect, canvas) {
@@ -3264,60 +3260,59 @@ window.addEventListener('DOMContentLoaded', () => {
                             return null;
                         }
 
-                        function invokeNodeLongPress(node) {
-                            if (!Array.isArray(node._components)) return false;
-                            for (var i = 0; i < node._components.length; i++) {
-                                var component = node._components[i];
+                        // Collect every node whose world bounding box contains mousePosition
+                        // and has a long press handler, then pick the best match:
+                        // smallest bbox area first (most specific visual target),
+                        // then closest bbox centre as tiebreaker.
+                        var candidates = [];
+
+                        function gatherCandidates(node) {
+                            if (!node || !node._activeInHierarchy) return;
+
+                            var children = node._children;
+                            if (Array.isArray(children)) {
+                                for (var i = 0; i < children.length; i++) {
+                                    gatherCandidates(children[i]);
+                                }
+                            }
+
+                            var bbox = null;
+                            try {
+                                bbox = node.getBoundingBoxToWorld();
+                            } catch (e) { return; }
+                            if (!bbox || !bbox.contains(mousePosition)) return;
+
+                            if (!Array.isArray(node._components)) return;
+                            for (var j = 0; j < node._components.length; j++) {
+                                var component = node._components[j];
                                 if (!component) continue;
                                 var handler = getLongPressHandler(component);
                                 if (typeof handler !== 'function') continue;
-                                try {
-                                    handler.apply(component);
-                                    return true;
-                                } catch (e) {
-                                }
-                            }
-                            return false;
-                        }
-
-                        function recursive(node) {
-                            if (!node) return false;
-
-                            var children = node._children;
-                            if (Array.isArray(children) && children.length > 0) {
-                                var orderedChildren = children.slice();
-                                orderedChildren.sort(function(a, b) {
-                                    var zA = Number(a && (a._localZOrder != null ? a._localZOrder : a.zIndex));
-                                    var zB = Number(b && (b._localZOrder != null ? b._localZOrder : b.zIndex));
-                                    if (isFinite(zA) && isFinite(zB) && zA !== zB) {
-                                        return zB - zA;
-                                    }
-                                    var orderA = Number(a && a._orderOfArrival);
-                                    var orderB = Number(b && b._orderOfArrival);
-                                    if (isFinite(orderA) && isFinite(orderB) && orderA !== orderB) {
-                                        return orderB - orderA;
-                                    }
-                                    return 0;
+                                candidates.push({
+                                    component: component,
+                                    handler: handler,
+                                    area: bbox.width * bbox.height,
+                                    distSq: Math.pow(bbox.x + bbox.width * 0.5 - mousePosition.x, 2) +
+                                            Math.pow(bbox.y + bbox.height * 0.5 - mousePosition.y, 2),
                                 });
-                                for (var i = 0; i < orderedChildren.length; i++) {
-                                    if (recursive(orderedChildren[i])) return true;
-                                }
+                                break;
                             }
-
-                            var containsPosition = false;
-                            try {
-                                containsPosition =
-                                    !!node._activeInHierarchy &&
-                                    node.getBoundingBoxToWorld().contains(mousePosition);
-                            } catch (e) {
-                                containsPosition = false;
-                            }
-
-                            if (!containsPosition) return false;
-                            return invokeNodeLongPress(node);
                         }
 
-                        return recursive(scene);
+                        gatherCandidates(scene);
+                        if (candidates.length === 0) return false;
+
+                        candidates.sort(function(a, b) {
+                            var areaDiff = a.area - b.area;
+                            if (Math.abs(areaDiff) > 100) return areaDiff;
+                            return a.distSq - b.distSq;
+                        });
+
+                        try {
+                            candidates[0].handler.apply(candidates[0].component);
+                            return true;
+                        } catch (e) {}
+                        return false;
                     }
 
                     function resolveViewportRect(rect) {

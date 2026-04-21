@@ -1,5 +1,6 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, Tray, nativeImage, clipboard, session, shell, screen } = require('electron');
 const fs = require('fs');
+const net = require('net');
 const path = require('path');
 const cache = require('./cache'); // Import the caching proxy
 const ini = require('./ini');
@@ -1869,6 +1870,450 @@ function createWindow(options = {}) {
     return mainWindow;
 }
 
+// ─── Automation Server (CraveAuto sidecar bridge) ────────────────────────────
+
+const AUTOMATION_SERVER_HOST = '127.0.0.1';
+const AUTOMATION_SERVER_PORT = 9223;
+const AUTOMATION_SERVER_IDLE_MS = 15;
+const AUTOMATION_RAID_LOG_LIMIT = 10;
+
+let automationServer = null;
+
+function findActiveWindow() {
+    const windows = BrowserWindow.getAllWindows();
+    for (const windowRef of windows) {
+        if (windowRef && !windowRef.isDestroyed()) return windowRef;
+    }
+    return null;
+}
+
+function buildAutomationEvalSource(rawSource) {
+    const source = typeof rawSource === 'string' ? rawSource : String(rawSource ?? '');
+    const serializedSource = JSON.stringify(source);
+
+    return `(() => {
+        const LOG_LIMIT = ${AUTOMATION_RAID_LOG_LIMIT};
+
+        function warnOnce(targetWindow, key, error) {
+            const message = error && error.message ? error.message : String(error);
+            try {
+                if (!targetWindow.__cscAutomationWarnings || typeof targetWindow.__cscAutomationWarnings !== 'object') {
+                    targetWindow.__cscAutomationWarnings = {};
+                }
+                if (targetWindow.__cscAutomationWarnings[key]) return;
+                targetWindow.__cscAutomationWarnings[key] = true;
+            } catch (_) {
+                console.warn('[Automation] Failed to persist warning flag:', message);
+            }
+            console.warn('[Automation] ' + key + ': ' + message);
+        }
+
+        function ensureCompatGlobals(targetWindow) {
+            if (!targetWindow.__cscAutomationCompat || typeof targetWindow.__cscAutomationCompat !== 'object') {
+                targetWindow.__cscAutomationCompat = {
+                    lastRaidList: [],
+                    lastRaidLogs: [],
+                    lastUserStatus: null
+                };
+            }
+
+            const state = targetWindow.__cscAutomationCompat;
+            if (!Array.isArray(state.lastRaidList)) state.lastRaidList = [];
+            if (!Array.isArray(state.lastRaidLogs)) state.lastRaidLogs = [];
+            if (!state.lastUserStatus || typeof state.lastUserStatus !== 'object') state.lastUserStatus = null;
+
+            if (!targetWindow.nw || typeof targetWindow.nw !== 'object') {
+                targetWindow.nw = {};
+            }
+            if (!targetWindow.nw.global || typeof targetWindow.nw.global !== 'object') {
+                targetWindow.nw.global = {};
+            }
+
+            targetWindow.nw.global.lastRaidList = state.lastRaidList;
+            targetWindow.nw.global.lastRaidLogs = state.lastRaidLogs;
+            targetWindow.nw.global.lastUserStatus = state.lastUserStatus;
+            return targetWindow.nw.global;
+        }
+
+        function parseNumberOrNull(value) {
+            const numberValue = Number(value);
+            if (!Number.isFinite(numberValue)) return null;
+            return Math.trunc(numberValue);
+        }
+
+        function readUserField(user, camelName, snakeName) {
+            if (!user || typeof user !== 'object') return null;
+            if (Object.prototype.hasOwnProperty.call(user, camelName)) {
+                return user[camelName];
+            }
+            if (snakeName && Object.prototype.hasOwnProperty.call(user, snakeName)) {
+                return user[snakeName];
+            }
+            return null;
+        }
+
+        function looksLikeUserObject(candidate) {
+            if (!candidate || typeof candidate !== 'object') return false;
+            const keys = [
+                'staminaValue',
+                'battlePointValue',
+                'staminaBonus',
+                'battlePointBonus',
+                'stamina_value',
+                'battle_point_value',
+                'stamina_bonus',
+                'battle_point_bonus'
+            ];
+            for (const key of keys) {
+                if (Object.prototype.hasOwnProperty.call(candidate, key)) return true;
+            }
+            return false;
+        }
+
+        function extractUserObject(data) {
+            if (!data || typeof data !== 'object') return null;
+            if (data.user && typeof data.user === 'object') return data.user;
+            if (looksLikeUserObject(data)) return data;
+
+            const queue = [data];
+            const visited = new WeakSet();
+            const maxNodeCount = 500;
+            let scanned = 0;
+
+            while (queue.length > 0 && scanned < maxNodeCount) {
+                const node = queue.shift();
+                scanned += 1;
+                if (!node || typeof node !== 'object') continue;
+                if (visited.has(node)) continue;
+                visited.add(node);
+
+                if (node !== data && looksLikeUserObject(node)) {
+                    return node;
+                }
+
+                if (Array.isArray(node)) {
+                    for (const item of node) {
+                        if (item && typeof item === 'object') queue.push(item);
+                    }
+                    continue;
+                }
+
+                for (const key of Object.keys(node)) {
+                    const value = node[key];
+                    if (key === 'user' && value && typeof value === 'object') return value;
+                    if (value && typeof value === 'object') queue.push(value);
+                }
+            }
+            return null;
+        }
+
+        function buildUserStatusSnapshot(data) {
+            if (!data || typeof data !== 'object') return null;
+            const user = extractUserObject(data);
+            if (!user) return null;
+
+            const apValue = parseNumberOrNull(readUserField(user, 'staminaValue', 'stamina_value'));
+            const apBonus = parseNumberOrNull(readUserField(user, 'staminaBonus', 'stamina_bonus'));
+            const rpValue = parseNumberOrNull(readUserField(user, 'battlePointValue', 'battle_point_value'));
+            const rpBonus = parseNumberOrNull(readUserField(user, 'battlePointBonus', 'battle_point_bonus'));
+            const apRemainSec = parseNumberOrNull(readUserField(user, 'staminaRemainSec', 'stamina_remain_sec'));
+            const rpRemainSec = parseNumberOrNull(readUserField(user, 'battlePointRemainSec', 'battle_point_remain_sec'));
+            const apRecoveryDate = readUserField(user, 'staminaRecoveryDate', 'stamina_recovery_date');
+            const rpRecoveryDate = readUserField(user, 'battlePointRecoveryDate', 'battle_point_recovery_date');
+
+            const hasAnyValue = [apValue, apBonus, rpValue, rpBonus, apRemainSec, rpRemainSec].some(
+                value => value !== null
+            );
+            if (!hasAnyValue) return null;
+
+            return {
+                capturedAt: new Date().toISOString(),
+                ap_value: apValue,
+                ap_bonus: apBonus,
+                ap_total: (apValue || 0) + (apBonus || 0),
+                ap_remain_sec: apRemainSec,
+                ap_recovery_date: apRecoveryDate || null,
+                rp_value: rpValue,
+                rp_bonus: rpBonus,
+                rp_total: (rpValue || 0) + (rpBonus || 0),
+                rp_remain_sec: rpRemainSec,
+                rp_recovery_date: rpRecoveryDate || null
+            };
+        }
+
+        function decodeResponsePayload(xhr, targetWindow) {
+            if (!xhr) return null;
+            const response = xhr.response;
+            if (response == null) return null;
+
+            if (typeof response === 'string') {
+                try {
+                    return JSON.parse(response);
+                } catch (error) {
+                    warnOnce(targetWindow, 'response-json-parse-failed', error);
+                    return null;
+                }
+            }
+
+            if (typeof response === 'object') {
+                try {
+                    const api = targetWindow.electronAPI;
+                    if (api && typeof api.decodeMsgpack === 'function') {
+                        const decoded = api.decodeMsgpack(response);
+                        if (decoded != null) return decoded;
+                    }
+                } catch (error) {
+                    warnOnce(targetWindow, 'msgpack-decode-failed', error);
+                }
+
+                if (response instanceof ArrayBuffer) {
+                    try {
+                        return JSON.parse(new targetWindow.TextDecoder().decode(new Uint8Array(response)));
+                    } catch (error) {
+                        warnOnce(targetWindow, 'arraybuffer-json-parse-failed', error);
+                        return null;
+                    }
+                }
+
+                return response;
+            }
+
+            return null;
+        }
+
+        function updateRaidAutomationState(targetWindow, pathname, data) {
+            const compat = ensureCompatGlobals(targetWindow);
+            const state = targetWindow.__cscAutomationCompat;
+            const userStatusSnapshot = buildUserStatusSnapshot(data);
+
+            if (userStatusSnapshot) {
+                state.lastUserStatus = userStatusSnapshot;
+                compat.lastUserStatus = state.lastUserStatus;
+            }
+
+            if (/\\/raid\\/(?:getRescueList|getBossList|getList)$/.test(pathname)) {
+                let nextRaidList = null;
+                if (data && Array.isArray(data.bossList)) {
+                    nextRaidList = data.bossList;
+                } else if (data && Array.isArray(data.rescueRaidDataList)) {
+                    nextRaidList = data.rescueRaidDataList;
+                }
+
+                if (nextRaidList) {
+                    state.lastRaidList = nextRaidList;
+                    compat.lastRaidList = state.lastRaidList;
+                }
+            }
+
+            state.lastRaidLogs.push({
+                path: pathname,
+                time: new Date().toISOString(),
+                keys: data && typeof data === 'object' ? Object.keys(data) : [],
+                has_user_status: !!userStatusSnapshot,
+                preview: Array.isArray(data) ? 'Array' : data
+            });
+            if (state.lastRaidLogs.length > LOG_LIMIT) {
+                state.lastRaidLogs.shift();
+            }
+            compat.lastRaidLogs = state.lastRaidLogs;
+        }
+
+        function installRaidHook(targetWindow) {
+            if (!targetWindow) return;
+            if (targetWindow.__cscAutomationRaidHookInstalled) return;
+            targetWindow.__cscAutomationRaidHookInstalled = true;
+            ensureCompatGlobals(targetWindow);
+
+            const XHR = targetWindow.XMLHttpRequest;
+            if (!XHR || !XHR.prototype || typeof XHR.prototype.open !== 'function') return;
+            const originalOpen = XHR.prototype.open;
+
+            XHR.prototype.open = function() {
+                this.addEventListener(
+                    'readystatechange',
+                    function() {
+                        if (this.readyState !== 4) return;
+                        try {
+                            const rawUrl = this.responseURL;
+                            if (!rawUrl) return;
+                            const parsedUrl = new targetWindow.URL(rawUrl, targetWindow.location.href);
+                            const pathname = parsedUrl.pathname || '';
+                            if (!pathname || pathname.indexOf('/gg/') !== 0) return;
+                            const data = decodeResponsePayload(this, targetWindow);
+                            if (!data) return;
+                            updateRaidAutomationState(targetWindow, pathname, data);
+                        } catch (error) {
+                            warnOnce(targetWindow, 'xhr-inspection-failed', error);
+                        }
+                    },
+                    false
+                );
+
+                return originalOpen.apply(this, arguments);
+            };
+        }
+
+        function visitWindows(targetWindow, seen) {
+            if (!targetWindow || seen.has(targetWindow)) return;
+            seen.add(targetWindow);
+
+            try {
+                installRaidHook(targetWindow);
+            } catch (error) {
+                warnOnce(window, 'install-raid-hook-failed', error);
+            }
+
+            try {
+                const frames = targetWindow.frames;
+                if (!frames || typeof frames.length !== 'number') return;
+                for (let i = 0; i < frames.length; i += 1) {
+                    visitWindows(frames[i], seen);
+                }
+            } catch (error) {
+                warnOnce(window, 'visit-windows-failed', error);
+            }
+        }
+
+        function findExecutionWindow(targetWindow, seen) {
+            if (!targetWindow || seen.has(targetWindow)) return null;
+            seen.add(targetWindow);
+
+            try {
+                if (targetWindow.cc) return targetWindow;
+            } catch (error) {
+                warnOnce(window, 'check-execution-window-failed', error);
+            }
+
+            try {
+                const frames = targetWindow.frames;
+                if (!frames || typeof frames.length !== 'number') return null;
+                for (let i = 0; i < frames.length; i += 1) {
+                    const nested = findExecutionWindow(frames[i], seen);
+                    if (nested) return nested;
+                }
+            } catch (error) {
+                warnOnce(window, 'search-execution-window-failed', error);
+            }
+
+            return null;
+        }
+
+        visitWindows(window, new WeakSet());
+
+        const executionWindow = findExecutionWindow(window, new WeakSet()) || window;
+        const compat = ensureCompatGlobals(executionWindow);
+        if (!compat.localStorage && executionWindow.localStorage) {
+            compat.localStorage = executionWindow.localStorage;
+        }
+
+        return executionWindow.eval(${serializedSource});
+    })()`;
+}
+
+async function evaluateAutomationScript(rawSource) {
+    const targetWindow = findActiveWindow();
+    if (!targetWindow) {
+        return 'Error: Main window is unavailable';
+    }
+
+    try {
+        const wrappedSource = buildAutomationEvalSource(rawSource);
+        const result = await targetWindow.webContents.executeJavaScript(wrappedSource, true);
+        return result == null ? '' : String(result);
+    } catch (error) {
+        return `Error: ${error?.message || error}`;
+    }
+}
+
+function stopAutomationServer() {
+    if (!automationServer) return;
+    const serverRef = automationServer;
+    automationServer = null;
+    try {
+        serverRef.close();
+    } catch (error) {
+        console.warn(`[Automation] Failed to stop server: ${error?.message || error}`);
+    }
+}
+
+function startAutomationServer() {
+    if (automationServer) return;
+
+    automationServer = net.createServer(socket => {
+        socket.setEncoding('utf8');
+
+        let requestBuffer = '';
+        let settleTimer = null;
+        let replied = false;
+
+        const clearSettleTimer = () => {
+            if (!settleTimer) return;
+            clearTimeout(settleTimer);
+            settleTimer = null;
+        };
+
+        const writeResponse = async () => {
+            if (replied) return;
+            replied = true;
+            clearSettleTimer();
+
+            const responseText = await evaluateAutomationScript(requestBuffer);
+            try {
+                socket.write(`${responseText}\n`);
+            } catch (error) {
+                console.warn(`[Automation] Failed to write response: ${error?.message || error}`);
+            }
+            socket.end();
+        };
+
+        const scheduleResponse = () => {
+            if (replied) return;
+            clearSettleTimer();
+            settleTimer = setTimeout(() => {
+                void writeResponse();
+            }, AUTOMATION_SERVER_IDLE_MS);
+        };
+
+        socket.on('data', chunk => {
+            if (replied) return;
+            requestBuffer += chunk;
+            scheduleResponse();
+        });
+
+        socket.on('end', () => {
+            void writeResponse();
+        });
+
+        socket.on('error', error => {
+            clearSettleTimer();
+            if (replied) return;
+            replied = true;
+            console.warn(`[Automation] Client socket error: ${error?.message || error}`);
+            try {
+                socket.write(`Error: ${error?.message || error}\n`);
+            } catch (writeError) {
+                console.warn(
+                    `[Automation] Failed to write socket error response: ${writeError?.message || writeError}`
+                );
+            }
+        });
+
+        socket.on('close', clearSettleTimer);
+    });
+
+    automationServer.on('error', error => {
+        console.warn(`[Automation] Server error: ${error?.message || error}`);
+    });
+
+    automationServer.listen(AUTOMATION_SERVER_PORT, AUTOMATION_SERVER_HOST, () => {
+        console.log(
+            `[Automation] Compatibility server listening on ${AUTOMATION_SERVER_HOST}:${AUTOMATION_SERVER_PORT}`
+        );
+    });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 app.whenReady().then(async () => {
@@ -1904,6 +2349,7 @@ app.whenReady().then(async () => {
     if (runtimeFlags.tray) {
         createTray();
     }
+    startAutomationServer();
 
     app.on('activate', function () {
         if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -1917,12 +2363,14 @@ app.whenReady().then(async () => {
 app.on('before-quit', () => {
     isQuitting = true;
     stopBlackoutPointerTracking();
+    stopAutomationServer();
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on('window-all-closed', function () {
+    stopAutomationServer();
     if (!runtimeFlags.nocache) {
         cache.dispose(); // Cleanup proxy server when quitting
     }
