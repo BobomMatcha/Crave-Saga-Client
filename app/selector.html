@@ -96,6 +96,160 @@
     .img-shadow-nutaku-net {
       filter: drop-shadow(0 0 5px #e53155);
     }
+
+    .proxy-btn {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      background: #232428;
+      border: none;
+      border-radius: 8px;
+      color: #aaa;
+      font-size: 12px;
+      padding: 6px 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .proxy-btn:hover { background: #3a3d40; color: #fff; }
+
+    .proxy-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #555;
+      flex-shrink: 0;
+    }
+
+    .proxy-dot.active { background: #4caf50; }
+
+    .proxy-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+    }
+
+    .proxy-overlay.open { display: flex; }
+
+    .proxy-modal {
+      background: #232428;
+      border-radius: 12px;
+      padding: 24px;
+      width: 300px;
+      color: #fff;
+    }
+
+    .proxy-modal h2 { margin: 0 0 16px; font-size: 16px; }
+
+    .proxy-modal label {
+      display: block;
+      font-size: 12px;
+      color: #aaa;
+      margin-bottom: 4px;
+    }
+
+    .proxy-modal input[type="text"] {
+      width: 100%;
+      box-sizing: border-box;
+      background: #313338;
+      border: 1px solid #444;
+      border-radius: 6px;
+      color: #fff;
+      padding: 7px 10px;
+      font-size: 13px;
+      margin-bottom: 2px;
+      outline: none;
+    }
+
+    .proxy-modal input[type="text"]:focus { border-color: #888; }
+    .proxy-modal input[type="text"].input-error { border-color: #f44; }
+
+    .field-error {
+      font-size: 11px;
+      color: #f44;
+      min-height: 16px;
+      margin-bottom: 8px;
+    }
+
+    .proxy-modal select {
+      width: 100%;
+      box-sizing: border-box;
+      background: #313338;
+      border: 1px solid #444;
+      border-radius: 6px;
+      color: #fff;
+      padding: 7px 10px;
+      font-size: 13px;
+      margin-bottom: 12px;
+      outline: none;
+    }
+
+    .proxy-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .proxy-toggle-row span { font-size: 13px; }
+
+    .proxy-toggle {
+      position: relative;
+      width: 36px;
+      height: 20px;
+    }
+
+    .proxy-toggle input { opacity: 0; width: 0; height: 0; }
+
+    .proxy-toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: #555;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .proxy-toggle-slider:before {
+      content: '';
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      left: 3px;
+      top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+
+    .proxy-toggle input:checked + .proxy-toggle-slider { background: #4caf50; }
+    .proxy-toggle input:checked + .proxy-toggle-slider:before { transform: translateX(16px); }
+
+    .proxy-modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .proxy-modal-actions button {
+      padding: 7px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .btn-cancel { background: #313338; color: #aaa; }
+    .btn-cancel:hover { color: #fff; }
+    .btn-save { background: #4caf50; color: #fff; }
+    .btn-save:hover { background: #43a047; }
   </style>
 </head>
 
@@ -143,6 +297,39 @@
     <span class="text">FANZA</span>
     <span class="type-text">(NSFW)</span>
   </button>
+  <button class="proxy-btn" onclick="openProxyModal()">
+    <span class="proxy-dot" id="proxyDot"></span>
+    Proxy
+  </button>
+
+  <div class="proxy-overlay" id="proxyOverlay">
+    <div class="proxy-modal">
+      <h2>Proxy 設定</h2>
+      <div class="proxy-toggle-row">
+        <span>啟用 Proxy</span>
+        <label class="proxy-toggle">
+          <input type="checkbox" id="proxyEnabled" />
+          <span class="proxy-toggle-slider"></span>
+        </label>
+      </div>
+      <label>Protocol</label>
+      <select id="proxyProtocol">
+        <option value="http">HTTP</option>
+        <option value="socks5">SOCKS5</option>
+      </select>
+      <label>Host</label>
+      <input type="text" id="proxyHost" placeholder="localhost" />
+      <div class="field-error" id="proxyHostError"></div>
+      <label>Port</label>
+      <input type="text" id="proxyPort" placeholder="7890" />
+      <div class="field-error" id="proxyPortError"></div>
+      <div id="proxyError" style="color:#f44;font-size:12px;min-height:16px;margin-bottom:8px;"></div>
+      <div class="proxy-modal-actions">
+        <button class="btn-cancel" onclick="closeProxyModal()">取消</button>
+        <button class="btn-save" onclick="saveProxySettings()">儲存</button>
+      </div>
+    </div>
+  </div>
   <script>
     // ====== Provider Functions (defined first so all onclick are ready immediately) ======
 
@@ -434,6 +621,96 @@
     window.dmm = function () { void selectProvider('dmm'); };
     window.fanza = function () { void selectProvider('fanza'); };
 
+    // ====== Proxy Settings ======
+
+    function updateProxyDot(enabled) {
+      var dot = document.getElementById('proxyDot');
+      if (dot) dot.className = 'proxy-dot' + (enabled ? ' active' : '');
+    }
+
+    function openProxyModal() {
+      var api = getElectronAPI();
+      if (!api || typeof api.getProxySettings !== 'function') return;
+      api.getProxySettings().then(function (settings) {
+        if (!settings) return;
+        clearProxyError();
+        document.getElementById('proxyEnabled').checked = !!settings.enabled;
+        document.getElementById('proxyProtocol').value = settings.protocol === 'socks5' ? 'socks5' : 'http';
+        document.getElementById('proxyHost').value = settings.host || '';
+        document.getElementById('proxyPort').value = settings.port || '';
+        document.getElementById('proxyOverlay').classList.add('open');
+      });
+    }
+
+    function closeProxyModal() {
+      document.getElementById('proxyOverlay').classList.remove('open');
+    }
+
+    function showFieldError(inputId, errorId, msg) {
+      var input = document.getElementById(inputId);
+      var errorEl = document.getElementById(errorId);
+      if (input) input.classList.add('input-error');
+      if (errorEl) errorEl.textContent = msg;
+    }
+
+    function showProxyError(msg) {
+      var el = document.getElementById('proxyError');
+      if (el) el.textContent = msg;
+    }
+
+    function clearProxyError() {
+      ['proxyHost', 'proxyPort'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.classList.remove('input-error');
+      });
+      ['proxyHostError', 'proxyPortError', 'proxyError'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = '';
+      });
+    }
+
+    function saveProxySettings() {
+      var api = getElectronAPI();
+      if (!api || typeof api.setProxySettings !== 'function') return;
+      var enabled = document.getElementById('proxyEnabled').checked;
+      var host = document.getElementById('proxyHost').value.trim();
+      var portRaw = document.getElementById('proxyPort').value.trim();
+      var port = parseInt(portRaw, 10);
+
+      if (enabled) {
+        if (!host) { showFieldError('proxyHost', 'proxyHostError', '請輸入 Host'); return; }
+        if (isNaN(port) || port < 1 || port > 65535) { showFieldError('proxyPort', 'proxyPortError', 'Port 必須為 1–65535'); return; }
+      }
+
+      clearProxyError();
+      var protocol = document.getElementById('proxyProtocol').value;
+      var settings = { enabled: enabled, host: host, port: enabled ? String(port) : portRaw, protocol: protocol };
+      var btn = document.querySelector('.btn-save');
+      btn.disabled = true;
+      api.setProxySettings(settings).then(function (ok) {
+        btn.disabled = false;
+        if (ok !== false) {
+          updateProxyDot(settings.enabled && !!settings.host && !!settings.port);
+          closeProxyModal();
+        } else {
+          showProxyError('儲存失敗，請重試');
+        }
+      });
+    }
+
+    document.getElementById('proxyOverlay').addEventListener('click', function (e) {
+      if (e.target === this) closeProxyModal();
+    });
+
+    // Load initial proxy dot state
+    (function () {
+      var api = getElectronAPI();
+      if (!api || typeof api.getProxySettings !== 'function') return;
+      api.getProxySettings().then(function (s) {
+        updateProxyDot(s && s.enabled && !!s.host && !!s.port);
+      });
+    })();
+
     // ====== Auto-redirect on load (safe, won't block function definitions above) ======
     document.addEventListener('DOMContentLoaded', async function () {
       try {
@@ -476,4 +753,3 @@
   </script>
 </body>
 
-</html>

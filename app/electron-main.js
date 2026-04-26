@@ -1,11 +1,15 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, Tray, nativeImage, clipboard, session, shell, screen } = require('electron');
+const crypto = require('crypto');
 const fs = require('fs');
+const https = require('https');
 const net = require('net');
+const os = require('os');
 const path = require('path');
 const cache = require('./cache'); // Import the caching proxy
 const ini = require('./ini');
 const { decode: decodeMsgpack } = require('@msgpack/msgpack');
 const { createSettingsStore, DEFAULT_SETTINGS } = require('./settings-store');
+const { minCraveAutoVersion } = require('../package.json');
 
 let mainWindow;
 let mainWindowWebSecurity = null;
@@ -41,9 +45,13 @@ function createTrayIcon() {
 }
 const CONFIG_INI_PATH = path.resolve(__dirname, '..', 'config.ini');
 const PROVIDER_PREFS_FILE = 'provider-preferences.json';
+const PROXY_SETTINGS_FILE = 'proxy-settings.json';
 const CUSTOM_DIR_PATH = path.resolve(__dirname, '..', 'custom');
 let providerPreferencesPath = null;
 let providerPreferences = { languageByProvider: {} };
+let userProxySettingsPath = null;
+let userProxySettingsLoaded = false;
+let userProxySettings = null;
 const PROVIDER_REGEX_FIELDS = Object.freeze(['loginRegex', 'pageRegex', 'gameRegex', 'wrapperRegex']);
 const WINDOWS_APP_USER_MODEL_ID = 'com.cravesaga.client';
 const WINDOWS_TOAST_SHORTCUT_NAME = 'Crave Saga.lnk';
@@ -540,6 +548,65 @@ function setProviderLanguagePreference(providerKey, languageId) {
     providerPreferences.languageByProvider[key] = normalizedLanguageId;
     saveProviderPreferences();
     return true;
+}
+
+function ensureUserProxySettingsLoaded() {
+    if (userProxySettingsLoaded) return;
+    userProxySettingsLoaded = true;
+    userProxySettingsPath = path.join(app.getPath('userData'), PROXY_SETTINGS_FILE);
+    try {
+        if (!fs.existsSync(userProxySettingsPath)) {
+            userProxySettings = { enabled: false, host: '', port: '', protocol: 'http' };
+            return;
+        }
+        const raw = fs.readFileSync(userProxySettingsPath, 'utf8');
+        const parsed = raw ? JSON.parse(raw) : {};
+        userProxySettings = {
+            enabled: parsed.enabled === true,
+            host: safeTrimmedString(parsed.host) || '',
+            port: safeTrimmedString(typeof parsed.port === 'number' ? String(parsed.port) : parsed.port) || '',
+            protocol: parsed.protocol === 'socks5' ? 'socks5' : 'http',
+        };
+    } catch (error) {
+        console.warn(`[UserProxy] Failed to load settings: ${error?.message || error}`);
+        userProxySettings = { enabled: false, host: '', port: '', protocol: 'http' };
+    }
+}
+
+function saveUserProxySettings() {
+    if (!userProxySettingsLoaded || !userProxySettingsPath) return;
+    try {
+        fs.mkdirSync(path.dirname(userProxySettingsPath), { recursive: true });
+        fs.writeFileSync(userProxySettingsPath, `${JSON.stringify(userProxySettings, null, 2)}\n`, 'utf8');
+    } catch (error) {
+        console.warn(`[UserProxy] Failed to save settings: ${error?.message || error}`);
+    }
+}
+
+function getEffectiveProxyConfig() {
+    // Priority: UI proxy settings (proxy-settings.json) > config.ini [proxy] > system proxy (mode: 'system')
+    // UI and config.ini settings are applied as proxyRules; system proxy is the final fallback.
+    if (userProxySettings && userProxySettings.enabled && userProxySettings.host && userProxySettings.port) {
+        const isSocks5 = userProxySettings.protocol === 'socks5';
+        const proxyServer = isSocks5
+            ? `socks5://${userProxySettings.host}:${userProxySettings.port}`
+            : `${userProxySettings.host}:${userProxySettings.port}`;
+        return { proxyServer };
+    }
+    return proxyConfig; // null → applyCurrentProxy falls back to mode: 'system'
+}
+
+async function applyCurrentProxy() {
+    const effective = getEffectiveProxyConfig();
+    try {
+        if (effective && effective.proxyServer) {
+            await session.defaultSession.setProxy({ proxyRules: effective.proxyServer });
+        } else {
+            await session.defaultSession.setProxy({ mode: 'system' });
+        }
+    } catch (error) {
+        console.warn(`[Proxy] Failed to apply session proxy: ${error?.message || error}`);
+    }
 }
 
 function normalizeLanguageList(rawLanguages) {
@@ -1213,12 +1280,39 @@ function quitApplication() {
     app.quit();
 }
 
+let mobileNotifyConfigWin = null;
+function openMobileNotifyConfig() {
+    if (mobileNotifyConfigWin && !mobileNotifyConfigWin.isDestroyed()) {
+        mobileNotifyConfigWin.focus();
+        return;
+    }
+    mobileNotifyConfigWin = new BrowserWindow({
+        width: 440,
+        height: 460,
+        resizable: false,
+        minimizable: false,
+        maximizable: false,
+        title: 'Notification Settings',
+        icon: path.join(__dirname, 'icon.png'),
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false
+        }
+    });
+    mobileNotifyConfigWin.setMenuBarVisibility(false);
+    mobileNotifyConfigWin.loadFile(path.join(__dirname, 'notification-settings.html'));
+    mobileNotifyConfigWin.on('closed', () => { mobileNotifyConfigWin = null; });
+}
+
 function buildTrayMenu() {
     const settings = getSettingsSnapshot();
     const notifications = settings.notifications || {};
     const audio = settings.audio || {};
 
     const notificationMenu = [
+        { label: 'Settings', click: () => openMobileNotifyConfig() },
+        { type: 'separator' },
         {
             label: 'Battle end',
             type: 'checkbox',
@@ -1236,6 +1330,12 @@ function buildTrayMenu() {
             type: 'checkbox',
             checked: !!notifications.expedition,
             click: item => void setNotificationSetting('expedition', !!item.checked)
+        },
+        {
+            label: 'Event Expeditions',
+            type: 'checkbox',
+            checked: !!notifications.eventExpedition,
+            click: item => void setNotificationSetting('eventExpedition', !!item.checked)
         },
         {
             label: 'AP full',
@@ -1365,6 +1465,8 @@ function buildContextMenu() {
     ];
 
     const notificationMenu = [
+        { label: 'Settings', click: () => openMobileNotifyConfig() },
+        { type: 'separator' },
         {
             label: 'Battle end',
             type: 'checkbox',
@@ -1382,6 +1484,12 @@ function buildContextMenu() {
             type: 'checkbox',
             checked: !!notifications.expedition,
             click: item => void setNotificationSetting('expedition', !!item.checked)
+        },
+        {
+            label: 'Event Expeditions',
+            type: 'checkbox',
+            checked: !!notifications.eventExpedition,
+            click: item => void setNotificationSetting('eventExpedition', !!item.checked)
         },
         {
             label: 'AP full',
@@ -1784,8 +1892,19 @@ function createWindow(options = {}) {
     });
 
     mainWindow.webContents.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
-        if (!isMainFrame) return;
-        void ensureWebSecurityModeForUrl(url);
+        if (isMainFrame) {
+            void ensureWebSecurityModeForUrl(url);
+        }
+        if (isInPlace) return;
+        // Only clear cache config on main-frame navigations or erolab subframe navigations.
+        // DMM/Fanza game iframes navigate internally during init — clearing there breaks the proxy.
+        if (!isMainFrame && !isErolabsUrl(url)) return;
+        global.clientHost = null;
+        global.clientVersion = null;
+        global.resourceHost = null;
+        if (typeof global.resetResourceCache === 'function') {
+            global.resetResourceCache();
+        }
     });
 
     mainWindow.webContents.on('did-navigate', (event, url) => {
@@ -1874,10 +1993,14 @@ function createWindow(options = {}) {
 
 const AUTOMATION_SERVER_HOST = '127.0.0.1';
 const AUTOMATION_SERVER_PORT = 9223;
-const AUTOMATION_SERVER_IDLE_MS = 15;
+const AUTOMATION_TOKEN_PATH = path.join(os.homedir(), '.cravesaga_bridge_token');
+
 const AUTOMATION_RAID_LOG_LIMIT = 10;
+const AUTOMATION_REQUEST_MAX_BYTES = 1 * 1024 * 1024; // 1 MB
 
 let automationServer = null;
+let automationToken = null;
+const automationSockets = new Set();
 
 function findActiveWindow() {
     const windows = BrowserWindow.getAllWindows();
@@ -1921,7 +2044,6 @@ function buildAutomationEvalSource(rawSource) {
             if (!Array.isArray(state.lastRaidList)) state.lastRaidList = [];
             if (!Array.isArray(state.lastRaidLogs)) state.lastRaidLogs = [];
             if (!state.lastUserStatus || typeof state.lastUserStatus !== 'object') state.lastUserStatus = null;
-
             if (!targetWindow.nw || typeof targetWindow.nw !== 'object') {
                 targetWindow.nw = {};
             }
@@ -2229,6 +2351,12 @@ function stopAutomationServer() {
     if (!automationServer) return;
     const serverRef = automationServer;
     automationServer = null;
+    automationToken = null;
+    try { fs.unlinkSync(AUTOMATION_TOKEN_PATH); } catch (_) {}
+    for (const socket of automationSockets) {
+        try { socket.destroy(); } catch (_) {}
+    }
+    automationSockets.clear();
     try {
         serverRef.close();
     } catch (error) {
@@ -2236,26 +2364,34 @@ function stopAutomationServer() {
     }
 }
 
+function compareVersionArrays(a, b) {
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        const diff = (a[i] || 0) - (b[i] || 0);
+        if (diff !== 0) return diff;
+    }
+    return 0;
+}
+
 function startAutomationServer() {
     if (automationServer) return;
 
+    automationToken = crypto.randomUUID();
+    try {
+        fs.writeFileSync(AUTOMATION_TOKEN_PATH, automationToken, { encoding: 'utf8', mode: 0o600 });
+    } catch (error) {
+        console.warn(`[Automation] Failed to write token file: ${error?.message || error}`);
+    }
+
     automationServer = net.createServer(socket => {
+        automationSockets.add(socket);
         socket.setEncoding('utf8');
 
         let requestBuffer = '';
-        let settleTimer = null;
         let replied = false;
-
-        const clearSettleTimer = () => {
-            if (!settleTimer) return;
-            clearTimeout(settleTimer);
-            settleTimer = null;
-        };
 
         const writeResponse = async () => {
             if (replied) return;
             replied = true;
-            clearSettleTimer();
 
             const responseText = await evaluateAutomationScript(requestBuffer);
             try {
@@ -2266,26 +2402,60 @@ function startAutomationServer() {
             socket.end();
         };
 
-        const scheduleResponse = () => {
-            if (replied) return;
-            clearSettleTimer();
-            settleTimer = setTimeout(() => {
-                void writeResponse();
-            }, AUTOMATION_SERVER_IDLE_MS);
-        };
-
         socket.on('data', chunk => {
             if (replied) return;
             requestBuffer += chunk;
-            scheduleResponse();
-        });
+            if (Buffer.byteLength(requestBuffer, 'utf8') > AUTOMATION_REQUEST_MAX_BYTES) {
+                replied = true;
+                try {
+                    socket.write('Error: 請求內容過大\n');
+                } catch (_) {}
+                socket.destroy();
+                return;
+            }
+            if (requestBuffer.includes('\0')) {
+                requestBuffer = requestBuffer.replace('\0', '');
+                const newlineIndex = requestBuffer.indexOf('\n');
+                const receivedToken = newlineIndex === -1 ? requestBuffer : requestBuffer.slice(0, newlineIndex);
+                if (receivedToken !== automationToken) {
+                    replied = true;
+                    try { socket.write('Error: 驗證失敗，token 不符\n'); } catch (_) {}
+                    socket.destroy();
+                    return;
+                }
+                requestBuffer = newlineIndex === -1 ? '' : requestBuffer.slice(newlineIndex + 1);
 
-        socket.on('end', () => {
-            void writeResponse();
+                // 版本交換：解析 CraveAuto 版本行（若存在）
+                if (!requestBuffer.startsWith('CRAVEAUTO_VERSION:')) {
+                    replied = true;
+                    try { socket.write('Error: 未發送版本資訊，請更新 CraveAuto\n'); } catch (_) {}
+                    socket.destroy();
+                    return;
+                }
+                const versionNewline = requestBuffer.indexOf('\n');
+                if (versionNewline === -1) {
+                    replied = true;
+                    try { socket.write('Error: 版本資訊不完整（請回報此問題）\n'); } catch (_) {}
+                    socket.destroy();
+                    return;
+                }
+                const versionLine = requestBuffer.slice(0, versionNewline);
+                const craveAutoVer = versionLine.slice('CRAVEAUTO_VERSION:'.length).split('.').map(Number);
+                const minVer = minCraveAutoVersion.split('.').map(Number);
+                if (compareVersionArrays(craveAutoVer, minVer) < 0) {
+                    replied = true;
+                    try { socket.write(`Error: CraveAuto 版本過舊，請更新至 ${minCraveAutoVersion} 以上\n`); } catch (_) {}
+                    socket.destroy();
+                    return;
+                }
+                try { socket.write(`VERSION:${app.getVersion()}\n`); } catch (_) {}
+                requestBuffer = requestBuffer.slice(versionNewline + 1);
+
+                void writeResponse();
+            }
         });
 
         socket.on('error', error => {
-            clearSettleTimer();
             if (replied) return;
             replied = true;
             console.warn(`[Automation] Client socket error: ${error?.message || error}`);
@@ -2298,7 +2468,9 @@ function startAutomationServer() {
             }
         });
 
-        socket.on('close', clearSettleTimer);
+        socket.on('close', () => {
+            automationSockets.delete(socket);
+        });
     });
 
     automationServer.on('error', error => {
@@ -2320,17 +2492,10 @@ app.whenReady().then(async () => {
     settingsStore = createSettingsStore(app);
     persistedWindowBounds = readPersistedWindowBounds();
     ensureProviderPreferencesLoaded();
+    ensureUserProxySettingsLoaded();
     applyProxyEnvironment();
     ensureWindowsToastShortcut();
-    try {
-        if (proxyConfig && proxyConfig.proxyServer) {
-            await session.defaultSession.setProxy({ proxyRules: proxyConfig.proxyServer });
-        } else {
-            await session.defaultSession.setProxy({ mode: 'direct' });
-        }
-    } catch (error) {
-        console.warn(`[Proxy] Failed to apply session proxy: ${error?.message || error}`);
-    }
+    await applyCurrentProxy();
     syncAudioStateFromSettings();
     if (!runtimeFlags.nocache) {
         // Start the local proxy server for caching
@@ -2703,6 +2868,74 @@ async function runCommandDispatcher(command, payload) {
     }
 }
 
+function notifyTelegram(payload, config) {
+    const { botToken, chatId } = config;
+    if (!botToken || !chatId) return;
+    if (!/^\d+:[A-Za-z0-9_-]+$/.test(botToken)) {
+        console.error('[MobileNotify] Telegram botToken format is invalid');
+        return;
+    }
+
+    const text = `${payload.title || 'Crave Saga'}\n${payload.body || ''}`;
+    const postData = JSON.stringify({ chat_id: chatId, text });
+    const options = {
+        hostname: 'api.telegram.org',
+        path: `/bot${botToken}/sendMessage`,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }
+    };
+    const req = https.request(options, res => {
+        if (res.statusCode !== 200) {
+            console.error(`[MobileNotify] Telegram responded ${res.statusCode}`);
+        }
+        res.resume();
+    });
+    req.on('error', err => console.error(`[MobileNotify] Telegram request error: ${err.message}`));
+    req.write(postData);
+    req.end();
+}
+
+function notifyDiscord(payload, config) {
+    const { webhookUrl } = config;
+    if (!webhookUrl) return;
+
+    const postData = JSON.stringify({
+        embeds: [{
+            title: payload.title || 'Crave Saga',
+            description: payload.body || '',
+            color: 0x5865F2
+        }]
+    });
+
+    let url;
+    try {
+        url = new URL(webhookUrl);
+        if (!['discord.com', 'discordapp.com'].includes(url.hostname)) {
+            console.error(`[MobileNotify] Discord webhookUrl hostname is not allowed: ${url.hostname}`);
+            return;
+        }
+    } catch {
+        console.error('[MobileNotify] Discord webhookUrl is invalid');
+        return;
+    }
+
+    const options = {
+        hostname: url.hostname,
+        path: url.pathname + url.search,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }
+    };
+    const req = https.request(options, res => {
+        if (res.statusCode !== 204) {
+            console.error(`[MobileNotify] Discord responded ${res.statusCode}`);
+        }
+        res.resume();
+    });
+    req.on('error', err => console.error(`[MobileNotify] Discord request error: ${err.message}`));
+    req.write(postData);
+    req.end();
+}
+
 function notifyElectron(payload) {
     const { Notification } = require('electron');
     const title = payload?.title || 'Crave Saga';
@@ -2760,6 +2993,17 @@ function notifyRouter(payload) {
     }
 
     console.log(`[NotificationDebug] IPC received: ${title} | ${body}`);
+
+    // 手機推播（Telegram / Discord）
+    // 通過上方 isNotificationEnabled 檢查後才會到達此處，表示該類型通知已啟用。
+    if (settingsStore) {
+        const mb = settingsStore.get('mobileNotifications');
+        if (mb) {
+            if (mb.telegram && mb.telegram.enabled) notifyTelegram(payload, mb.telegram);
+            if (mb.discord && mb.discord.enabled) notifyDiscord(payload, mb.discord);
+        }
+    }
+
     return {
         ...result,
         ...notifyElectron(payload)
@@ -2773,6 +3017,18 @@ function dispatchNotification(payload) {
 ipcMain.handle('show-notification', (event, payload) => {
     return dispatchNotification(payload);
 });
+
+ipcMain.handle('get-mobile-notify-settings', () => {
+    return settingsStore ? settingsStore.get('mobileNotifications') : null;
+});
+
+ipcMain.handle('set-mobile-notify-settings', (event, data) => {
+    if (!settingsStore || !data || typeof data !== 'object') return null;
+    const next = settingsStore.set('mobileNotifications', data);
+    broadcastSettingsSnapshot();
+    return next.mobileNotifications;
+});
+
 
 ipcMain.on('get-settings-sync', event => {
     event.returnValue = getSettingsSnapshot();
@@ -2918,7 +3174,34 @@ ipcMain.handle('get-proxy-port', () => {
     return global.resourceProxyPort || 0;
 });
 
+ipcMain.handle('get-proxy-settings', () => {
+    return userProxySettings
+        ? { ...userProxySettings }
+        : { enabled: false, host: '', port: '', protocol: 'http' };
+});
+
+ipcMain.handle('set-proxy-settings', async (event, settings) => {
+    if (!settings || typeof settings !== 'object') return false;
+    const enabled = settings.enabled === true;
+    const host = safeTrimmedString(settings.host) || '';
+    const portStr = safeTrimmedString(typeof settings.port === 'number' ? String(settings.port) : settings.port) || '';
+    const protocol = settings.protocol === 'socks5' ? 'socks5' : 'http';
+    if (enabled) {
+        if (!host) return false;
+        const portNum = parseInt(portStr, 10);
+        if (!portStr || isNaN(portNum) || portNum < 1 || portNum > 65535) return false;
+    }
+    userProxySettings = { enabled, host, port: portStr, protocol };
+    saveUserProxySettings();
+    await applyCurrentProxy();
+    return true;
+});
+
 // Receive target host information from the game renderer and store it in global context
+ipcMain.handle('get-cache-folder', () => {
+    return cache.getResourceCacheFolder();
+});
+
 ipcMain.on('set-cache-config', (event, data) => {
     if (data.resourceHost) global.resourceHost = data.resourceHost;
     if (data.clientHost) global.clientHost = data.clientHost;

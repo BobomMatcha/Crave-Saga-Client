@@ -5,6 +5,7 @@ const mainEventListeners = new Map();
 let mainEventListenerId = 0;
 let cachedSettings = null;
 let cachedProviderState = null;
+let _cacheFolderPromise = null;
 
 function cloneSettings(settings) {
     try {
@@ -156,6 +157,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     updateTrayStatus: (data) => ipcRenderer.send('set-tray-status', data),
     getProxyPort: () => ipcRenderer.invoke('get-proxy-port'),
     setCacheConfig: (data) => ipcRenderer.send('set-cache-config', data),
+    getCacheFolder: () => {
+        if (!_cacheFolderPromise) {
+            _cacheFolderPromise = ipcRenderer.invoke('get-cache-folder').catch(() => null);
+        }
+        return _cacheFolderPromise;
+    },
     getRuntimeConfig: () => {
         try {
             return ipcRenderer.sendSync('get-runtime-config-sync');
@@ -183,7 +190,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
         } catch (e) {
             return null;
         }
-    }
+    },
+    getMobileNotifySettings: () => ipcRenderer.invoke('get-mobile-notify-settings').catch(() => null),
+    setMobileNotifySettings: (data) => ipcRenderer.invoke('set-mobile-notify-settings', data).catch(() => null),
+    getProxySettings: () => ipcRenderer.invoke('get-proxy-settings').catch(() => null),
+    setProxySettings: (settings) => ipcRenderer.invoke('set-proxy-settings', settings).catch(() => false)
 });
 
 // ====== Phase 2 & 3: Iframe Stripping + Canvas Injection + Cache Polyfill ======
@@ -227,6 +238,8 @@ window.addEventListener('DOMContentLoaded', () => {
     const currentUrl = window.location.href || '';
     const isSelectorPage = /\/selector\.html(?:[?#]|$)/i.test(currentUrl);
     const isExtensionPage = currentUrl.startsWith('chrome-extension://');
+    // 內部 app 工具頁面（file://），不應套用遊戲注入邏輯。
+    const isAppInternalPage = currentUrl.startsWith('file://') && /\/notification-settings\.html(?:[?#]|$)/i.test(currentUrl);
     const hasProviderState =
         typeof providerState?.provider === 'string' &&
         providerState.provider.trim() &&
@@ -234,6 +247,8 @@ window.addEventListener('DOMContentLoaded', () => {
         providerState.entryUrl.trim() &&
         hasGameRegex &&
         hasRouteRegex;
+
+    if (isAppInternalPage) return;
 
     if (!hasProviderState && !isSelectorPage && !isExtensionPage) {
         if (isSubframe) return;
@@ -382,6 +397,29 @@ window.addEventListener('DOMContentLoaded', () => {
                     tick();
                 }
     `;
+
+    const injectedDownloadPathLabelSource = `
+                function createPathLabel() {
+                    var el = document.createElement('div');
+                    el.style.lineHeight = '1.4';
+                    el.style.marginTop = '4px';
+                    el.style.fontSize = '10px';
+                    el.style.color = '#aaa';
+                    el.style.wordBreak = 'break-all';
+                    return el;
+                }
+
+                function getFilenameFromUrl(url) {
+                    try {
+                        var pathname = new URL(url).pathname;
+                        var lastSlash = pathname.lastIndexOf('/');
+                        return lastSlash >= 0 ? pathname.slice(lastSlash + 1) : pathname;
+                    } catch (e) {
+                        return '';
+                    }
+                }
+    `;
+
     if (isSubframe && shellStripEnabled) {
         const subframeScript = document.createElement('script');
         try {
@@ -391,6 +429,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 ${injectedRegexHelpersSource}
                 ${injectedMaskHelpersSource}
                 ${injectedWrapperHelpersSource}
+                ${injectedDownloadPathLabelSource}
 
                 function pickLargestIframe() {
                     var frames = document.querySelectorAll('iframe');
@@ -856,6 +895,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 var subframeDownloadOverlayRoot = null;
                 var subframeDownloadOverlayBar = null;
                 var subframeDownloadOverlayText = null;
+                var subframeDownloadOverlayPath = null;
 
                 function ensureSubframeDownloadOverlayStyle() {
                     if (document.getElementById(subframeDownloadOverlayStyleId)) return;
@@ -910,8 +950,12 @@ window.addEventListener('DOMContentLoaded', () => {
                     subframeDownloadOverlayText.textContent = 'Preparing resource download...';
                     subframeDownloadOverlayText.setAttribute(subframeGameKeepAttr, '1');
 
+                    subframeDownloadOverlayPath = createPathLabel();
+                    subframeDownloadOverlayPath.setAttribute(subframeGameKeepAttr, '1');
+
                     subframeDownloadOverlayRoot.appendChild(progressTrack);
                     subframeDownloadOverlayRoot.appendChild(subframeDownloadOverlayText);
+                    subframeDownloadOverlayRoot.appendChild(subframeDownloadOverlayPath);
                     document.body.appendChild(subframeDownloadOverlayRoot);
                     markKeepChain(subframeDownloadOverlayRoot, subframeGameKeepAttr);
                 }
@@ -935,6 +979,12 @@ window.addEventListener('DOMContentLoaded', () => {
                             subframeDownloadOverlayRoot.setAttribute('data-csc-visible', '0');
                         }
                     }, delayMs || 0);
+                }
+
+                function setSubframeDownloadOverlayPath(folderPath) {
+                    ensureSubframeDownloadOverlay();
+                    if (!subframeDownloadOverlayPath) return;
+                    subframeDownloadOverlayPath.textContent = typeof folderPath === 'string' && folderPath ? folderPath : '';
                 }
 
                 function waitForSubframeResourceManifest(timeoutMs) {
@@ -1066,6 +1116,11 @@ window.addEventListener('DOMContentLoaded', () => {
                     updateSubframeDownloadOverlay('Preparing resource manifest...', 0);
                     console.log('[CSC] (Subframe) Resource download started');
 
+                    setSubframeDownloadOverlayPath('');
+                    var subframeCacheFolderPath = window.electronAPI && typeof window.electronAPI.getCacheFolder === 'function'
+                        ? await window.electronAPI.getCacheFolder()
+                        : null;
+
                     try {
                         var manifestResult = await waitForSubframeResourceManifest(20000);
                         if (!manifestResult || !manifestResult.assetLoader || !manifestResult.manifest) {
@@ -1104,6 +1159,9 @@ window.addEventListener('DOMContentLoaded', () => {
                                             'Downloading ' + subframeResourceDownloadState.completed + '/' + subframeResourceDownloadState.total + failedPart,
                                             ratio
                                         );
+                                        if (subframeCacheFolderPath) {
+                                            setSubframeDownloadOverlayPath(subframeCacheFolderPath + '/' + getFilenameFromUrl(assetUrl));
+                                        }
                                     });
                             };
                         });
@@ -1563,6 +1621,7 @@ window.addEventListener('DOMContentLoaded', () => {
             ${injectedRegexHelpersSource}
             ${injectedMaskHelpersSource}
             ${injectedWrapperHelpersSource}
+            ${injectedDownloadPathLabelSource}
 
             var loginPatterns = compileRegexContractList(providerRegexContract.loginRegex, 'loginRegex', true);
             var pagePatterns = compileRegexContractList(providerRegexContract.pageRegex, 'pageRegex', true);
@@ -1815,7 +1874,9 @@ window.addEventListener('DOMContentLoaded', () => {
                 var expeditionState = {
                     referenceTimeDiffMs: null,
                     expeditions: {},
-                    expeditionGroups: []
+                    expeditionGroups: [],
+                    eventExpeditions: {},
+                    eventExpeditionGroups: []
                 };
                 var masterData = {};
                 var userData = {
@@ -1871,6 +1932,7 @@ window.addEventListener('DOMContentLoaded', () => {
                             battleEnd: notifications.battleEnd !== false,
                             raidDeath: notifications.raidDeath !== false,
                             expedition: notifications.expedition !== false,
+                            eventExpedition: notifications.eventExpedition !== false,
                             stamina: notifications.stamina !== false,
                             battlepoint: notifications.battlepoint !== false
                         },
@@ -2392,6 +2454,67 @@ window.addEventListener('DOMContentLoaded', () => {
                     }
                 }
 
+                function groupEventExpeditions() {
+                    expeditionState.eventExpeditionGroups.splice(0, expeditionState.eventExpeditionGroups.length);
+                    var ids = Object.keys(expeditionState.eventExpeditions);
+                    for (var i = 0; i < ids.length; i++) {
+                        var id = ids[i];
+                        var endMs = expeditionState.eventExpeditions[id];
+                        var existingGroup = null;
+                        for (var j = 0; j < expeditionState.eventExpeditionGroups.length; j++) {
+                            var group = expeditionState.eventExpeditionGroups[j];
+                            if (Math.abs(group.endTime - endMs) < 60000) {
+                                existingGroup = group;
+                                break;
+                            }
+                        }
+                        if (existingGroup) {
+                            existingGroup.ids.push(id);
+                            existingGroup.endTime = Math.max(existingGroup.endTime, endMs);
+                        } else {
+                            expeditionState.eventExpeditionGroups.push({ endTime: endMs, ids: [id] });
+                        }
+                    }
+                }
+
+                function updateEventExpeditions(data) {
+                    try {
+                        var gameNow = gameDateNowMs();
+                        if (gameNow == null) return 0;
+
+                        var expeditionData = data && data.eventExpeditions;
+                        if (!expeditionData) return 0;
+
+                        for (var i = 0; i < expeditionData.length; i++) {
+                            var expedition = expeditionData[i];
+                            if (!expedition) continue;
+                            if (!expedition.endDate) continue;
+                            if (!expedition.startDate) continue;
+
+                            var endMs = parseGameDateToMs(expedition.endDate);
+                            if (endMs == null) continue;
+
+                            var id = expedition.slotId;
+                            if (id == null) continue;
+                            id = String(id);
+
+                            if (endMs < gameNow || expedition.receiveDate) {
+                                if (expeditionState.eventExpeditions[id]) {
+                                    delete expeditionState.eventExpeditions[id];
+                                }
+                                continue;
+                            }
+
+                            expeditionState.eventExpeditions[id] = endMs;
+                            groupEventExpeditions();
+                        }
+
+                        return expeditionData.length || 0;
+                    } catch (e) {
+                        return 0;
+                    }
+                }
+
                 function updateRaidBattle(data) {
                     try {
                         if (data && data.raidStatus) {
@@ -2430,6 +2553,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 var downloadOverlayRoot = null;
                 var downloadOverlayBar = null;
                 var downloadOverlayText = null;
+                var downloadOverlayPath = null;
 
                 function ensureDownloadOverlay() {
                     if (downloadOverlayRoot) return;
@@ -2467,8 +2591,11 @@ window.addEventListener('DOMContentLoaded', () => {
                     downloadOverlayText.style.lineHeight = '1.4';
                     downloadOverlayText.textContent = 'Preparing resource download...';
 
+                    downloadOverlayPath = createPathLabel();
+
                     downloadOverlayRoot.appendChild(progressTrack);
                     downloadOverlayRoot.appendChild(downloadOverlayText);
+                    downloadOverlayRoot.appendChild(downloadOverlayPath);
                     document.body.appendChild(downloadOverlayRoot);
                 }
 
@@ -2491,6 +2618,12 @@ window.addEventListener('DOMContentLoaded', () => {
                             downloadOverlayRoot.style.display = 'none';
                         }
                     }, delayMs || 0);
+                }
+
+                function setDownloadOverlayPath(folderPath) {
+                    ensureDownloadOverlay();
+                    if (!downloadOverlayPath) return;
+                    downloadOverlayPath.textContent = typeof folderPath === 'string' && folderPath ? folderPath : '';
                 }
 
                 function waitForResourceManifest(timeoutMs) {
@@ -2620,6 +2753,11 @@ window.addEventListener('DOMContentLoaded', () => {
                     resourceDownloadState.failed = 0;
                     updateDownloadOverlay('Preparing resource manifest...', 0);
 
+                    setDownloadOverlayPath('');
+                    var cacheFolderPath = window.electronAPI && typeof window.electronAPI.getCacheFolder === 'function'
+                        ? await window.electronAPI.getCacheFolder()
+                        : null;
+
                     try {
                         var manifestResult = await waitForResourceManifest(20000);
                         if (!manifestResult || !manifestResult.assetLoader || !manifestResult.manifest) {
@@ -2656,6 +2794,9 @@ window.addEventListener('DOMContentLoaded', () => {
                                             'Downloading ' + resourceDownloadState.completed + '/' + resourceDownloadState.total + failedPart,
                                             ratio
                                         );
+                                        if (cacheFolderPath) {
+                                            setDownloadOverlayPath(cacheFolderPath + '/' + getFilenameFromUrl(assetUrl));
+                                        }
                                     });
                             };
                         });
@@ -2830,7 +2971,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
                     updateUser(data);
                     var expeditionCount = updateExpeditions(data);
-                    console.log('[CSC][ExpeditionDebug] pathname=' + pathname + ' expeditionCount=' + expeditionCount);
+                    var eventExpeditionCount = updateEventExpeditions(data);
+                    console.log('[CSC][ExpeditionDebug] pathname=' + pathname + ' expeditionCount=' + expeditionCount + ' eventExpeditionCount=' + eventExpeditionCount);
                 }
 
                 function installExpeditionRequestHook() {
@@ -2879,6 +3021,25 @@ window.addEventListener('DOMContentLoaded', () => {
                                     delete expeditionState.expeditions[group.ids[j]];
                                 }
                                 groupExpeditions();
+                                i = -1;
+                            }
+                        }
+
+                        for (var i = 0; i < expeditionState.eventExpeditionGroups.length; i++) {
+                            var group = expeditionState.eventExpeditionGroups[i];
+                            if (now > group.endTime) {
+                                var ids = group.ids.map(function(id) { return '#' + id; });
+                                var message = ids.length > 1
+                                    ? 'Event Expeditions ' + ids.join(',') + ' has finished'
+                                    : 'Event Expedition ' + ids[0] + ' has finished';
+
+                                console.log('[CSC][ExpeditionDebug] notify=' + message);
+                                sendGameNotification('eventExpedition', 'Crave Saga', message);
+
+                                for (var j = 0; j < group.ids.length; j++) {
+                                    delete expeditionState.eventExpeditions[group.ids[j]];
+                                }
+                                groupEventExpeditions();
                                 i = -1;
                             }
                         }

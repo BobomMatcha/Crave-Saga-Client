@@ -1,6 +1,6 @@
 {
   "name": "cravesaga",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Crave Saga Electron Client",
   "author": "Crave Saga Contributors",
   "main": "app/electron-main.js",
@@ -21,5 +21,6 @@
   "devDependencies": {
     "electron": "^40.7.0",
     "electron-builder": "^26.8.1"
-  }
+  },
+  "minCraveAutoVersion": "0.1.0"
 }
