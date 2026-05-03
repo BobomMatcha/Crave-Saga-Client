@@ -46,8 +46,6 @@ anyGlobal.cacheLoader = true;
 anyGlobal.resourceProxyPort = 0;
 
 let streamWatch = {};
-const CONTENT_TYPE_CACHE_LIMIT = 1024;
-const contentTypeMetadataCache = new Map();
 const ensuredClientCacheFolders = new Set();
 const createWriteStream = filePath => {
   if (streamWatch[filePath]) {
@@ -69,7 +67,6 @@ anyGlobal.resetResourceCache = () => {
     streamWatch[filePath].destroy();
   }
   streamWatch = {};
-  contentTypeMetadataCache.clear();
   ensuredClientCacheFolders.clear();
 };
 
@@ -85,8 +82,12 @@ function getCacheFilename(host, requestPath) {
   const normalizedHost = typeof host === 'string' && host ? host : 'unknown-host';
   const [withoutHash] = requestPath.split('#');
   const [withoutQuery] = withoutHash.split('?');
+  const base = path.basename(withoutQuery || '');
+  if (/^[0-9a-f]{32}(?:[._-][a-z0-9_-]+)*$/i.test(base)) {
+    return base;
+  }
   const ext = convertToValidFilename(path.extname(withoutQuery || '')) || '';
-  const keySource = `${normalizedHost}|${withoutHash}`;
+  const keySource = `${normalizedHost}|${withoutQuery}`;
   const hash = crypto.createHash('md5').update(keySource).digest('hex');
   return ext ? `${hash}${ext}` : hash;
 }
@@ -99,64 +100,24 @@ function isHashedAssetPath(requestPath) {
   return /^[0-9a-f]{32}(?:[._-][a-z0-9_-]+)*$/i.test(base);
 }
 
-function getCacheMetadataPath(filePath) {
-  return `${filePath}.meta.json`;
-}
-
-function getContentTypeMetadataFromMemory(filePath) {
-  if (!contentTypeMetadataCache.has(filePath)) return undefined;
-  const value = contentTypeMetadataCache.get(filePath);
-  contentTypeMetadataCache.delete(filePath);
-  contentTypeMetadataCache.set(filePath, value);
-  return value;
-}
-
-function setContentTypeMetadataCache(filePath, contentType) {
-  if (contentTypeMetadataCache.has(filePath)) {
-    contentTypeMetadataCache.delete(filePath);
-  }
-  contentTypeMetadataCache.set(filePath, contentType);
-  if (contentTypeMetadataCache.size > CONTENT_TYPE_CACHE_LIMIT) {
-    const firstKey = contentTypeMetadataCache.keys().next().value;
-    if (firstKey != null) {
-      contentTypeMetadataCache.delete(firstKey);
-    }
-  }
+function getLegacyCacheFilename(host, requestPath) {
+  if (!requestPath || typeof requestPath !== 'string') return null;
+  const normalizedHost = typeof host === 'string' && host ? host : 'unknown-host';
+  const [withoutHash] = requestPath.split('#');
+  const [withoutQuery] = withoutHash.split('?');
+  const ext = convertToValidFilename(path.extname(withoutQuery || '')) || '';
+  const keySource = `${normalizedHost}|${withoutHash}`;
+  const hash = crypto.createHash('md5').update(keySource).digest('hex');
+  const legacyName = ext ? `${hash}${ext}` : hash;
+  return legacyName !== getCacheFilename(host, requestPath) ? legacyName : null;
 }
 
 async function readCachedContentType(filePath) {
-  const memoryCached = getContentTypeMetadataFromMemory(filePath);
-  if (memoryCached !== undefined) {
-    return memoryCached;
-  }
-  try {
-    const metadataPath = getCacheMetadataPath(filePath);
-    const raw = await fs.promises.readFile(metadataPath, 'utf8');
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    const contentType = typeof parsed?.contentType === 'string' ? parsed.contentType.trim() : '';
-    const normalized = contentType || null;
-    setContentTypeMetadataCache(filePath, normalized);
-    return normalized;
-  } catch (_) {
-    setContentTypeMetadataCache(filePath, null);
-    return null;
-  }
+  return null;
 }
 
 function writeCachedContentType(filePath, contentType) {
-  const normalized = typeof contentType === 'string' ? contentType.trim() : '';
-  if (!normalized) return;
-  setContentTypeMetadataCache(filePath, normalized);
-  fs.promises
-    .writeFile(
-      getCacheMetadataPath(filePath),
-      `${JSON.stringify({ contentType: normalized }, null, 2)}\n`,
-      'utf8'
-    )
-    .catch(error => {
-      console.warn(`[Cache] Failed to persist cache metadata for ${filePath}: ${error?.message || error}`);
-    });
+  return;
 }
 
 function parseByteRangeHeader(rangeHeader, fileSize) {
@@ -343,6 +304,21 @@ module.exports = {
           }
         }
 
+        if (shouldUseCache && !cachedFileStat) {
+          const legacyFilename = getLegacyCacheFilename(resourceHost?.host, url);
+          if (legacyFilename) {
+            const legacyPath = path.join(targetCacheFolder, legacyFilename);
+            try {
+              const stat = await fs.promises.stat(legacyPath);
+              if (stat.isFile()) {
+                await fs.promises.rename(legacyPath, filePath);
+                cachedFileStat = await fs.promises.stat(filePath);
+                console.log(`[Cache MIGRATED] ${legacyFilename} -> ${filename}`);
+              }
+            } catch (_) {}
+          }
+        }
+
         if (cachedFileStat) {
           console.log(`[Cache HIT] ${filename}`);
           const contentType = (await readCachedContentType(filePath)) || mime.lookup(filePath) || 'binary/octet-stream';
@@ -513,5 +489,4 @@ module.exports = {
   dispose: () => {
     server?.close();
   },
-  getResourceCacheFolder: () => resourceCacheFolder,
 };

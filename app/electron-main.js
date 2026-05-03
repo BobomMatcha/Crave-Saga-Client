@@ -99,11 +99,17 @@ function resolvePackagedCacheFolder() {
     if (process.platform === 'darwin') {
         const appBundlePath = findMacAppBundlePath(process.execPath);
         if (appBundlePath) {
-            const siblingCacheFolder = path.join(path.dirname(appBundlePath), 'cache');
-            if (canWriteToFolder(siblingCacheFolder)) {
-                return siblingCacheFolder;
+            const appDir = path.dirname(appBundlePath);
+            const isSystemInstalled =
+                appDir === '/Applications' ||
+                appDir === '/System/Applications';
+            if (!isSystemInstalled) {
+                const siblingCacheFolder = path.join(appDir, 'cache');
+                if (canWriteToFolder(siblingCacheFolder)) {
+                    return siblingCacheFolder;
+                }
+                console.warn(`[Cache] mac sibling cache is not writable: ${siblingCacheFolder}. Falling back to userData.`);
             }
-            console.warn(`[Cache] mac sibling cache is not writable: ${siblingCacheFolder}. Falling back to userData.`);
         }
     }
 
