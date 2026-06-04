@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.cravesaga.client",
+  "productName": "Crave Saga",
+  "asar": true,
+  "directories": {
+    "output": "dist/mac",
+    "buildResources": "app"
+  },
+  "files": [
+    "app/**/*",
+    "config.ini",
+    "package.json"
+  ],
+  "artifactName": "CraveSaga-${version}-mac-${arch}.${ext}",
+  "mac": {
+    "category": "public.app-category.games",
+    "icon": "app/icon_512.png",
+    "target": [
+      "zip"
+    ]
+  }
+}
