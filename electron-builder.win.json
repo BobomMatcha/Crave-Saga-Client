@@ -1,0 +1,27 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.cravesaga.client",
+  "productName": "Crave Saga",
+  "asar": true,
+  "directories": {
+    "output": "dist/win",
+    "buildResources": "app"
+  },
+  "files": [
+    "app/**/*",
+    "config.ini",
+    "package.json"
+  ],
+  "artifactName": "CraveSaga-${version}-win-${arch}.${ext}",
+  "win": {
+    "icon": "app/icon.ico",
+    "target": [
+      {
+        "target": "zip",
+        "arch": [
+          "x64"
+        ]
+      }
+    ]
+  }
+}

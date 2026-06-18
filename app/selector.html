@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Crave Saga</title>
+
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 0;
+      flex-wrap: wrap;
+      background-color: #313338;
+    }
+
+    .banner {
+      background-color: #232428;
+      padding: 20px;
+      text-align: center;
+      width: 100%;
+      margin-bottom: 80px;
+    }
+
+    .banner h1 {
+      color: #fff;
+      font-size: 32px;
+      margin: 0;
+    }
+
+    .icon-button {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 150px;
+      height: 120px;
+      background-color: #232428;
+      border-radius: 10px;
+      margin: 10px;
+      padding: 16px;
+      box-sizing: border-box;
+      text-align: center;
+      color: #fff;
+      border: none;
+      /* Remove button's default border */
+      outline: none;
+      /* Remove button's default outline */
+      cursor: pointer;
+      /* Add cursor pointer */
+    }
+
+    .icon-button:focus {
+      /* Add focus style */
+      box-shadow: 0 0 0 2px #fff;
+    }
+
+    .icon-button:hover {
+      /* Add hover style */
+      background-color: #3a3d40;
+    }
+
+    .icon-button:active {
+      /* Add active style */
+      background-color: #1f2022;
+    }
+
+    .icon {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+
+    .text {
+      font-size: 14px;
+    }
+
+    .icon img {
+      max-width: 100%;
+      max-height: 100%;
+    }
+
+    .align-middle {
+      vertical-align: middle;
+    }
+
+    .img-shadow {
+      filter: drop-shadow(0 0 2px rgba(255, 255, 255));
+    }
+
+    .img-shadow-nutaku-com {
+      filter: drop-shadow(0 0 5px #31adff);
+    }
+
+    .img-shadow-nutaku-net {
+      filter: drop-shadow(0 0 5px #e53155);
+    }
+
+    .proxy-btn {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      background: #232428;
+      border: none;
+      border-radius: 8px;
+      color: #aaa;
+      font-size: 12px;
+      padding: 6px 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .font-btn {
+      left: 16px;
+      right: auto;
+    }
+
+    .proxy-btn:hover { background: #3a3d40; color: #fff; }
+
+    .proxy-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #555;
+      flex-shrink: 0;
+    }
+
+    .proxy-dot.active { background: #4caf50; }
+
+    .proxy-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+    }
+
+    .proxy-overlay.open { display: flex; }
+
+    .proxy-modal {
+      background: #232428;
+      border-radius: 12px;
+      padding: 24px;
+      width: min(360px, calc(100vw - 48px));
+      max-height: calc(100vh - 48px);
+      box-sizing: border-box;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .proxy-modal h2 { margin: 0 0 16px; font-size: 16px; }
+
+    .font-description {
+      color: #aaa;
+      font-size: 12px;
+      line-height: 1.4;
+      margin: -8px 0 22px;
+    }
+
+    .proxy-modal label {
+      display: block;
+      font-size: 12px;
+      color: #aaa;
+      margin-bottom: 4px;
+    }
+
+    .proxy-modal input[type="text"] {
+      width: 100%;
+      box-sizing: border-box;
+      background: #313338;
+      border: 1px solid #444;
+      border-radius: 6px;
+      color: #fff;
+      padding: 7px 10px;
+      font-size: 13px;
+      margin-bottom: 2px;
+      outline: none;
+    }
+
+    .font-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 0;
+    }
+
+    .font-toggle-row {
+      margin-bottom: 24px;
+    }
+
+    .font-tabs {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+      margin-bottom: 28px;
+    }
+
+    .font-tab {
+      border: 1px solid #3a3d40;
+      border-radius: 6px;
+      background: #2d2f35;
+      color: #bbb;
+      cursor: pointer;
+      font-size: 12px;
+      min-height: 34px;
+      padding: 6px 8px;
+      text-align: left;
+    }
+
+    .font-tab.active {
+      background: #3a3d40;
+      border-color: #555;
+      color: #fff;
+    }
+
+    .font-panel {
+      min-height: 0;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    .font-target {
+      margin-bottom: 22px;
+      padding-bottom: 22px;
+    }
+
+    .font-target:not(:last-child) {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .font-target:last-child {
+      margin-bottom: 0;
+    }
+
+    .font-target-title {
+      color: #fff;
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+
+    .font-path {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      background: #313338;
+      border: 1px solid #444;
+      border-radius: 6px;
+      color: #ddd;
+      font-size: 12px;
+      padding: 7px 9px;
+    }
+
+    .font-path.empty { color: #777; }
+
+    .font-action {
+      border: none;
+      border-radius: 6px;
+      background: #313338;
+      color: #ddd;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 8px 10px;
+    }
+
+    .font-action:hover { background: #3a3d40; color: #fff; }
+
+    .font-clear {
+      border: none;
+      border-radius: 6px;
+      background: #2b2d32;
+      color: #c8c8c8;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 8px 10px;
+    }
+
+    .font-clear:hover { background: #3a3d40; color: #fff; }
+
+    .font-note {
+      color: #999;
+      font-size: 11px;
+      line-height: 1.35;
+      margin: 4px 0 10px;
+    }
+
+    .proxy-modal input[type="text"]:focus { border-color: #888; }
+    .proxy-modal input[type="text"].input-error { border-color: #f44; }
+
+    .field-error {
+      font-size: 11px;
+      color: #f44;
+      min-height: 16px;
+      margin-bottom: 8px;
+    }
+
+    .proxy-modal select {
+      width: 100%;
+      box-sizing: border-box;
+      background: #313338;
+      border: 1px solid #444;
+      border-radius: 6px;
+      color: #fff;
+      padding: 7px 10px;
+      font-size: 13px;
+      margin-bottom: 12px;
+      outline: none;
+    }
+
+    .proxy-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .proxy-toggle-row span { font-size: 13px; }
+
+    .proxy-toggle {
+      position: relative;
+      width: 36px;
+      height: 20px;
+    }
+
+    .proxy-toggle input { opacity: 0; width: 0; height: 0; }
+
+    .proxy-toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: #555;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .proxy-toggle-slider:before {
+      content: '';
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      left: 3px;
+      top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+
+    .proxy-toggle input:checked + .proxy-toggle-slider { background: #4caf50; }
+    .proxy-toggle input:checked + .proxy-toggle-slider:before { transform: translateX(16px); }
+
+    .proxy-modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .proxy-modal-actions button {
+      padding: 7px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .btn-cancel { background: #313338; color: #aaa; }
+    .btn-cancel:hover { color: #fff; }
+    .btn-save { background: #4caf50; color: #fff; }
+    .btn-save:hover { background: #43a047; }
+
+    .erolabs-url-menu {
+      display: none;
+      position: fixed;
+      min-width: 220px;
+      background: #232428;
+      border: 1px solid #444;
+      border-radius: 8px;
+      box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+      padding: 6px;
+      z-index: 200;
+    }
+
+    .erolabs-url-menu.open { display: block; }
+
+    .erolabs-url-menu button {
+      width: 100%;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: #ddd;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      padding: 8px 10px;
+      text-align: left;
+    }
+
+    .erolabs-url-menu button:hover,
+    .erolabs-url-menu button:focus {
+      background: #3a3d40;
+      color: #fff;
+      outline: none;
+    }
+
+    .erolabs-url-menu button.selected {
+      background: #313338;
+      color: #fff;
+    }
+
+    .erolabs-url-menu .menu-marker {
+      flex: 0 0 18px;
+      height: 18px;
+      position: relative;
+    }
+
+    .erolabs-url-menu button.selected .menu-marker:after {
+      content: '';
+      position: absolute;
+      left: 4px;
+      top: 2px;
+      width: 6px;
+      height: 10px;
+      border: solid #4caf50;
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+
+    .erolabs-url-menu .menu-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="banner">
+    <h1>Select a provider</h1>
+  </div>
+
+  <button id="erolabsButton" class="icon-button" onclick="erolabs()">
+    <i class="icon"><img src="./logos/erolabs.webp" /></i>
+    <span class="text">EROLABS</span>
+    <span class="type-text">(NSFW)</span>
+  </button>
+  <button class="icon-button" onclick="johrenSfw()">
+    <i class="icon"><img src="./logos/johren.svg" /></i>
+    <span class="text">Johren</span>
+    <span class="type-text">(SFW)</span>
+  </button>
+  <button class="icon-button" onclick="johrenNsfw()">
+    <i class="icon"><img src="./logos/johren_adult.svg" /></i>
+    <span class="text">Johren 18+</span>
+    <span class="type-text">(NSFW)</span>
+  </button>
+  <button class="icon-button" onclick="nutakuCom()">
+    <i class="icon">
+      <img width="120" class="img-shadow-nutaku-com align-middle" src="./logos/nutaku.svg" />
+    </i>
+    <span class="text">nutaku.com</span>
+    <span class="type-text">(SFW)</span>
+  </button>
+  <button class="icon-button" onclick="nutakuNet()">
+    <i class="icon">
+      <img width="120" class="img-shadow-nutaku-net align-middle" src="./logos/nutaku.svg" />
+    </i>
+    <span class="text">nutaku.net</span>
+    <span class="type-text">(NSFW)</span>
+  </button>
+  <button class="icon-button" onclick="dmm()">
+    <i class="icon"><img class="img-shadow" src="./logos/dmm.svg" /></i>
+    <span class="text">DMM</span>
+    <span class="type-text">(SFW)</span>
+  </button>
+  <button class="icon-button" onclick="fanza()">
+    <i class="icon"><img src="./logos/fanza.svg" /></i>
+    <span class="text">FANZA</span>
+    <span class="type-text">(NSFW)</span>
+  </button>
+  <button class="proxy-btn" onclick="openProxyModal()">
+    <span class="proxy-dot" id="proxyDot"></span>
+    Proxy
+  </button>
+  <button class="proxy-btn font-btn" onclick="openFontModal()">
+    <span class="proxy-dot" id="fontDot"></span>
+    Fonts
+  </button>
+
+  <div class="proxy-overlay" id="proxyOverlay">
+    <div class="proxy-modal">
+      <h2>Proxy 設定</h2>
+      <div class="proxy-toggle-row">
+        <span>啟用 Proxy</span>
+        <label class="proxy-toggle">
+          <input type="checkbox" id="proxyEnabled" />
+          <span class="proxy-toggle-slider"></span>
+        </label>
+      </div>
+      <label>Protocol</label>
+      <select id="proxyProtocol">
+        <option value="http">HTTP</option>
+        <option value="socks5">SOCKS5</option>
+      </select>
+      <label>Host</label>
+      <input type="text" id="proxyHost" placeholder="localhost" />
+      <div class="field-error" id="proxyHostError"></div>
+      <label>Port</label>
+      <input type="text" id="proxyPort" placeholder="7890" />
+      <div class="field-error" id="proxyPortError"></div>
+      <div id="proxyError" style="color:#f44;font-size:12px;min-height:16px;margin-bottom:8px;"></div>
+      <div class="proxy-modal-actions">
+        <button class="btn-cancel" onclick="closeProxyModal()">取消</button>
+        <button class="btn-save" onclick="saveProxySettings()">儲存</button>
+      </div>
+    </div>
+  </div>
+  <div class="proxy-overlay" id="fontOverlay">
+    <div class="proxy-modal">
+      <h2>字體替換</h2>
+      <div class="font-description">支援 TTF、OTF、WOFF、WOFF2。設定會在重新載入遊戲後套用。</div>
+      <div class="proxy-toggle-row font-toggle-row">
+        <span>啟用替換</span>
+        <label class="proxy-toggle">
+          <input type="checkbox" id="fontEnabled" />
+          <span class="proxy-toggle-slider"></span>
+        </label>
+      </div>
+      <div class="font-tabs" id="fontVersionTabs"></div>
+      <div class="font-panel" id="fontTargetList"></div>
+      <div id="fontError" style="color:#f44;font-size:12px;min-height:16px;margin-bottom:8px;"></div>
+      <div class="proxy-modal-actions">
+        <button class="btn-cancel" onclick="closeFontModal()">取消</button>
+        <button class="btn-save" id="fontSaveButton" onclick="saveFontSettings()">儲存</button>
+      </div>
+    </div>
+  </div>
+  <div id="erolabsUrlMenu" class="erolabs-url-menu" role="menu" aria-label="EROLABS URL options"></div>
+  <script>
+    // ====== Provider Functions (defined first so all onclick are ready immediately) ======
+
+    const erolabUrls = [
+      'www.ero-labs.com',
+      'game.ero-labs.shop',
+      'game.ero-labs.website',
+      'game.erolabs.cloud',
+      'game.erolabs.net',
+    ];
+
+    const PROVIDER_REGEX_FIELDS = Object.freeze(['loginRegex', 'pageRegex', 'gameRegex', 'wrapperRegex']);
+
+    function createRegexContract(source, flags) {
+      return {
+        source: typeof source === 'string' ? source : '',
+        flags: typeof flags === 'string' ? flags : '',
+      };
+    }
+
+    function createCloudfrontClientRegex(channel) {
+      var safeChannel = (channel === 'r' || channel === 'w') ? channel : 'g';
+      return createRegexContract(
+        'https:\\/\\/[^/]+\\.cloudfront\\.net\\/' + safeChannel + '\\/client\\/[^/?#]+\\/index[^/?#]*\\.html(?:[?#].*)?$'
+      );
+    }
+
+    function createNutakuPlayFrameRegex(slug) {
+      var safeSlug = typeof slug === 'string' && slug ? slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : 'crave-saga';
+      return createRegexContract('https:\\/\\/gi\\.nutaku\\.(?:com|net)\\/play-frame\\/' + safeSlug + '\\/');
+    }
+
+    const providerConfigs = {
+      johrenSfw: {
+        provider: 'Crave Saga (Johren)',
+        cookieHosts: ['www.johren.net', 'johren.net'],
+        entryUrl: 'https://www.johren.net/games/cravesaga-en/play',
+        loginRegex: [
+          createRegexContract('login\\.html'),
+          createRegexContract('https:\\/\\/(?:www\\.)?johren\\.net\\/login(?:[/?#]|$)'),
+        ],
+        pageRegex: [createRegexContract('cravesaga-en\\/play')],
+        gameRegex: [
+          createRegexContract('https:\\/\\/johren-client-en\\.g\\.cravesaga\\.johren\\.games'),
+          createCloudfrontClientRegex('g'),
+        ],
+        wrapperRegex: [createRegexContract('osapi\\.johren\\.net')],
+      },
+      johrenNsfw: {
+        provider: 'Crave Saga X (Johren)',
+        cookieHosts: ['www.johren.games', 'johren.games'],
+        entryUrl: 'https://www.johren.games/games/cravesagax-en/play',
+        loginRegex: [
+          createRegexContract('login\\.html'),
+          createRegexContract('https:\\/\\/(?:www\\.)?johren\\.games\\/login(?:[/?#]|$)'),
+        ],
+        pageRegex: [createRegexContract('cravesagax-en\\/play')],
+        gameRegex: [
+          createRegexContract('https:\\/\\/johren-client-en\\.r\\.cravesaga\\.johren\\.games'),
+          createCloudfrontClientRegex('r'),
+        ],
+        wrapperRegex: [createRegexContract('osapi\\.johren\\.net')],
+      },
+      nutakuCom: {
+        provider: 'Crave Saga (nutaku.com)',
+        cookieHosts: ['www.nutaku.com', 'nutaku.com'],
+        entryUrl: 'https://www.nutaku.com/games/crave-saga/play/',
+        loginRegex: [createRegexContract('crave-saga\\/?$')],
+        pageRegex: [createRegexContract('crave-saga\\/play')],
+        gameRegex: [
+          createRegexContract('https:\\/\\/nutaku-client-en\\.g\\.cravesaga\\.johren\\.games'),
+          createNutakuPlayFrameRegex('crave-saga'),
+          createCloudfrontClientRegex('g'),
+        ],
+        wrapperRegex: [
+          createRegexContract('osapi\\.nutaku\\.com'),
+          createNutakuPlayFrameRegex('crave-saga'),
+        ],
+      },
+      nutakuNet: {
+        provider: 'Crave Saga X (nutaku.net)',
+        cookieHosts: ['www.nutaku.net', 'nutaku.net'],
+        entryUrl: 'https://www.nutaku.net/games/crave-saga-x/play/',
+        loginRegex: [createRegexContract('crave-saga-x\\/?$')],
+        pageRegex: [createRegexContract('crave-saga-x\\/play')],
+        gameRegex: [
+          createRegexContract('https:\\/\\/nutaku-client-en\\.r\\.cravesaga\\.johren\\.games'),
+          createNutakuPlayFrameRegex('crave-saga-x'),
+          createCloudfrontClientRegex('r'),
+        ],
+        wrapperRegex: [
+          createRegexContract('osapi\\.nutaku\\.com'),
+          createNutakuPlayFrameRegex('crave-saga-x'),
+        ],
+      },
+      dmm: {
+        provider: 'Crave Saga (DMM)',
+        cookieHosts: ['www.dmm.com', 'dmm.com'],
+        entryUrl: 'https://play.games.dmm.com/game/cravesaga/',
+        loginRegex: [createRegexContract('service\\/login')],
+        pageRegex: [createRegexContract('(play|game)\\/cravesaga')],
+        gameRegex: [
+          createRegexContract('https:\\/\\/gg-client-w\\.crave-saga\\.net'),
+          createRegexContract('https:\\/\\/gg-dmm-gadgets\\.crave-saga\\.net'),
+          createCloudfrontClientRegex('w'),
+        ],
+        wrapperRegex: [createRegexContract('osapi\\.dmm\\.com')],
+      },
+      fanza: {
+        provider: 'Crave Saga X (FANZA GAMES)',
+        cookieHosts: ['www.dmm.co.jp', 'dmm.co.jp'],
+        entryUrl: 'https://play.games.dmm.co.jp/game/cravesagax',
+        loginRegex: [createRegexContract('service\\/login')],
+        pageRegex: [createRegexContract('(play|game)\\/cravesagax')],
+        gameRegex: [
+          createRegexContract('https:\\/\\/gg-client-r\\.crave-saga\\.net'),
+          createRegexContract('https:\\/\\/gg-dmm-gadgets\\.crave-saga\\.net'),
+          createCloudfrontClientRegex('r'),
+        ],
+        wrapperRegex: [createRegexContract('osapi\\.dmm\\.com')],
+      },
+    };
+
+    function getElectronAPI() { return window.electronAPI || null; }
+
+    function getErolabsUrl() {
+      try {
+        return localStorage.getItem('erolabsUrl') || 'www.ero-labs.com';
+      } catch (e) {
+        return 'www.ero-labs.com';
+      }
+    }
+
+    function getProviderConfig(providerKey) {
+      if (providerKey === 'erolabs') {
+        var erolabsUrl = getErolabsUrl();
+        return {
+          provider: 'Crave Saga X (EROLABS)',
+          cookieHosts: [erolabsUrl],
+          loginRegex: [createRegexContract('login\\.html')],
+          pageRegex: [
+            createRegexContract('\\/(?:en|cn|zh)\\/(?:$|index\\.html(?:[?#]|$))'),
+            createRegexContract('\\/(?:en|cn|zh)\\/game\\/crave-saga-x(?:[?#]|$)'),
+            createRegexContract('webGL\\.html\\?id=47'),
+            createRegexContract('webGLforCloud\\.html\\?id=47'),
+            createRegexContract('game\\.html\\?id=47'),
+          ],
+          gameRegex: [
+            createRegexContract('https:\\/\\/erolabs-client-(?:ch|en)\\.r\\.cravesaga\\.johren\\.games'),
+            createRegexContract('\\.cloudfront\\.net'),
+          ],
+          wrapperRegex: [
+            createRegexContract('webGL\\.html\\?id=47'),
+            createRegexContract('webGLforCloud\\.html\\?id=47'),
+          ],
+          langs: [
+            { id: 'en', name: 'English', url: 'https://' + erolabsUrl + '/en/game.html?id=47' },
+            { id: 'cn', name: '简体中文', url: 'https://' + erolabsUrl + '/cn/game.html?id=47' },
+            { id: 'zh', name: '繁體中文', url: 'https://' + erolabsUrl + '/zh/game.html?id=47' },
+          ],
+          entryUrl: 'https://' + erolabsUrl + '/game.html?id=47',
+        };
+      }
+      return providerConfigs[providerKey] || null;
+    }
+
+    function getSavedLanguage(providerKey) {
+      try {
+        return localStorage.getItem('providerLang:' + providerKey);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function getSavedDefaultProvider() {
+      try {
+        return localStorage.getItem('defaultProvider');
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function persistDefaultProvider(providerKey) {
+      try {
+        if (typeof providerKey === 'string' && providerKey) {
+          localStorage.setItem('defaultProvider', providerKey);
+        } else {
+          localStorage.removeItem('defaultProvider');
+        }
+      } catch (e) { }
+    }
+
+    async function getPreferredLanguage(providerKey) {
+      var api = getElectronAPI();
+      if (api && typeof api.getProviderLanguagePreference === 'function') {
+        try {
+          var langFromMain = await api.getProviderLanguagePreference(providerKey);
+          if (langFromMain) return langFromMain;
+        } catch (e) { }
+      }
+      return getSavedLanguage(providerKey);
+    }
+
+    function resolveLanguageConfig(langs, preferredLangId) {
+      if (!Array.isArray(langs) || langs.length === 0) return null;
+      if (preferredLangId) {
+        for (var i = 0; i < langs.length; i += 1) {
+          if (langs[i] && langs[i].id === preferredLangId) {
+            return langs[i];
+          }
+        }
+      }
+      return langs[0];
+    }
+
+    async function persistLanguagePreference(providerKey, langId) {
+      try {
+        localStorage.setItem('providerLang:' + providerKey, langId);
+      } catch (e) { }
+
+      var api = getElectronAPI();
+      if (api && typeof api.setProviderLanguagePreference === 'function') {
+        try {
+          await api.setProviderLanguagePreference(providerKey, langId);
+        } catch (e) { }
+      }
+    }
+
+    async function selectProvider(providerKey, forceLangId) {
+      var config = getProviderConfig(providerKey);
+      if (!config) return;
+      persistDefaultProvider(providerKey);
+
+      var hasLangs = Array.isArray(config.langs) && config.langs.length > 0;
+      var selectedLang = null;
+      var entryUrl = config.entryUrl;
+
+      if (hasLangs) {
+        var preferredLang = forceLangId || await getPreferredLanguage(providerKey);
+        selectedLang = resolveLanguageConfig(config.langs, preferredLang);
+        if (!selectedLang) return;
+        entryUrl = selectedLang.url;
+        await persistLanguagePreference(providerKey, selectedLang.id);
+      }
+
+      if (typeof entryUrl !== 'string' || !entryUrl) return;
+
+      var api = getElectronAPI();
+      if (api && typeof api.setGameProvider === 'function') {
+        try {
+          var payload = {
+            provider: config.provider,
+            cookieHosts: config.cookieHosts,
+            entryUrl: entryUrl,
+            defaultProvider: providerKey,
+            success: false,
+          };
+          for (var i = 0; i < PROVIDER_REGEX_FIELDS.length; i += 1) {
+            var fieldName = PROVIDER_REGEX_FIELDS[i];
+            var fieldValue = config[fieldName];
+            payload[fieldName] = Array.isArray(fieldValue) ? fieldValue.map(function (item) {
+              return {
+                source: item && typeof item.source === 'string' ? item.source : '',
+                flags: item && typeof item.flags === 'string' ? item.flags : '',
+              };
+            }) : [];
+          }
+          if (hasLangs) {
+            payload.lang = selectedLang.id;
+            payload.langs = config.langs;
+          }
+          await api.setGameProvider(payload);
+        } catch (error) {
+          console.error('[Selector] Failed to set provider state:', error);
+        }
+      }
+
+      window.location.href = entryUrl;
+    }
+
+    function normalizeErolabsHost(value) {
+      var host = typeof value === 'string' ? value.trim() : '';
+      host = host.replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+      return host;
+    }
+
+    function setErolabsUrl(value) {
+      var host = normalizeErolabsHost(value);
+      if (!host) host = erolabUrls[0];
+      try { localStorage.setItem('erolabsUrl', host); } catch (e) { }
+      return host;
+    }
+
+    function closeErolabsUrlMenu() {
+      var menu = document.getElementById('erolabsUrlMenu');
+      if (!menu) return;
+      menu.classList.remove('open');
+      menu.innerHTML = '';
+    }
+
+    function addErolabsUrlMenuItem(menu, label, selected, onSelect) {
+      var item = document.createElement('button');
+      item.type = 'button';
+      item.setAttribute('role', 'menuitem');
+      item.className = selected ? 'selected' : '';
+
+      var marker = document.createElement('span');
+      marker.className = 'menu-marker';
+      item.appendChild(marker);
+
+      var text = document.createElement('span');
+      text.className = 'menu-label';
+      text.textContent = label;
+      item.appendChild(text);
+
+      item.addEventListener('click', function () {
+        onSelect();
+        closeErolabsUrlMenu();
+      });
+      menu.appendChild(item);
+    }
+
+    function positionErolabsUrlMenu(menu, x, y) {
+      menu.style.left = '0px';
+      menu.style.top = '0px';
+      menu.classList.add('open');
+
+      var rect = menu.getBoundingClientRect();
+      var left = Math.max(8, Math.min(x, window.innerWidth - rect.width - 8));
+      var top = Math.max(8, Math.min(y, window.innerHeight - rect.height - 8));
+      menu.style.left = left + 'px';
+      menu.style.top = top + 'px';
+    }
+
+    function openErolabsUrlMenu(x, y) {
+      var menu = document.getElementById('erolabsUrlMenu');
+      if (!menu) return;
+
+      var currentUrl = normalizeErolabsHost(getErolabsUrl()) || erolabUrls[0];
+      menu.innerHTML = '';
+
+      for (var i = 0; i < erolabUrls.length; i += 1) {
+        (function (url) {
+          addErolabsUrlMenuItem(menu, url, currentUrl === url, function () {
+            setErolabsUrl(url);
+          });
+        })(erolabUrls[i]);
+      }
+
+      var isBuiltin = erolabUrls.indexOf(currentUrl) !== -1;
+      var customLabel = isBuiltin ? 'Custom...' : 'Custom: ' + currentUrl;
+      addErolabsUrlMenuItem(menu, customLabel, !isBuiltin, function () {
+        var newUrl = prompt('Enter custom URL for EROLABS:', currentUrl);
+        if (newUrl !== null) setErolabsUrl(newUrl);
+      });
+
+      positionErolabsUrlMenu(menu, x, y);
+    }
+
+    window.erolabsSelector = function (ev) {
+      if (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+      }
+      openErolabsUrlMenu(ev && Number.isFinite(ev.clientX) ? ev.clientX : 16, ev && Number.isFinite(ev.clientY) ? ev.clientY : 16);
+      return false;
+    };
+
+    window.erolabs = function () { void selectProvider('erolabs'); };
+    window.johrenSfw = function () { void selectProvider('johrenSfw'); };
+    window.johrenNsfw = function () { void selectProvider('johrenNsfw'); };
+    window.nutakuCom = function () { void selectProvider('nutakuCom'); };
+    window.nutakuNet = function () { void selectProvider('nutakuNet'); };
+    window.dmm = function () { void selectProvider('dmm'); };
+    window.fanza = function () { void selectProvider('fanza'); };
+    window.openFontModal = openFontModal;
+    window.closeFontModal = closeFontModal;
+    window.chooseFontFile = chooseFontFile;
+    window.clearFontFile = clearFontFile;
+    window.saveFontSettings = saveFontSettings;
+
+    // ====== Proxy Settings ======
+
+    function updateProxyDot(enabled) {
+      var dot = document.getElementById('proxyDot');
+      if (dot) dot.className = 'proxy-dot' + (enabled ? ' active' : '');
+    }
+
+    var fontSettingsDraft = { enabled: true, targets: {} };
+    var fontDefinitions = [];
+    var fontVersions = [];
+    var activeFontVersion = 'tw';
+
+    function updateFontDot(settings) {
+      var dot = document.getElementById('fontDot');
+      var targets = settings && settings.targets ? settings.targets : {};
+      var active = settings && settings.enabled !== false && Object.keys(targets).some(function (key) {
+        return !!targets[key];
+      });
+      if (dot) dot.className = 'proxy-dot' + (active ? ' active' : '');
+    }
+
+    function getFileName(filePath) {
+      if (!filePath || typeof filePath !== 'string') return '';
+      var normalized = filePath.replace(/\\/g, '/');
+      return normalized.substring(normalized.lastIndexOf('/') + 1);
+    }
+
+    function getTargetsForVersion(versionId) {
+      return fontDefinitions.filter(function (target) {
+        return target.version === versionId;
+      });
+    }
+
+    function setFontPath(role, filePath) {
+      var el = document.getElementById('fontPath-' + role);
+      if (!el) return;
+      if (filePath) {
+        el.textContent = getFileName(filePath);
+        el.title = filePath;
+        el.classList.remove('empty');
+      } else {
+        el.textContent = '未選擇';
+        el.title = '';
+        el.classList.add('empty');
+      }
+    }
+
+    function renderFontSettings(settings) {
+      fontDefinitions = settings && Array.isArray(settings.definitions) ? settings.definitions : fontDefinitions;
+      fontVersions = settings && Array.isArray(settings.versions) ? settings.versions : fontVersions;
+      var sourceTargets = settings && settings.targets ? settings.targets : {};
+      var targets = {};
+      for (var i = 0; i < fontDefinitions.length; i += 1) {
+        var key = fontDefinitions[i].key;
+        targets[key] = sourceTargets[key] || '';
+      }
+      if (!targets.twBold && settings && settings.bold) targets.twBold = settings.bold;
+      if (!targets.twHeavy && settings && settings.heavy) targets.twHeavy = settings.heavy;
+      fontSettingsDraft = {
+        enabled: !settings || settings.enabled !== false,
+        targets: targets
+      };
+      if (!getTargetsForVersion(activeFontVersion).length && fontVersions.length) {
+        activeFontVersion = fontVersions[0].id;
+      }
+      document.getElementById('fontEnabled').checked = fontSettingsDraft.enabled;
+      renderFontVersionTabs();
+      renderFontTargetList();
+      updateFontDot(fontSettingsDraft);
+    }
+
+    function renderFontVersionTabs() {
+      var root = document.getElementById('fontVersionTabs');
+      if (!root) return;
+      root.innerHTML = '';
+
+      for (var i = 0; i < fontVersions.length; i += 1) {
+        var version = fontVersions[i];
+        var total = getTargetsForVersion(version.id).length;
+        if (!total) continue;
+        var tab = document.createElement('button');
+        tab.type = 'button';
+        tab.className = 'font-tab' + (version.id === activeFontVersion ? ' active' : '');
+        tab.setAttribute('data-version-id', version.id);
+        tab.textContent = version.label;
+
+        tab.addEventListener('click', function (event) {
+          activeFontVersion = event.currentTarget.getAttribute('data-version-id');
+          renderFontVersionTabs();
+          renderFontTargetList();
+        });
+        root.appendChild(tab);
+      }
+    }
+
+    function renderFontTargetList() {
+      var root = document.getElementById('fontTargetList');
+      if (!root) return;
+      root.innerHTML = '';
+
+      var versionTargets = getTargetsForVersion(activeFontVersion);
+      for (var j = 0; j < versionTargets.length; j += 1) {
+        var target = versionTargets[j];
+        var item = document.createElement('div');
+        item.className = 'font-target';
+
+        var title = document.createElement('div');
+        title.className = 'font-target-title';
+        title.textContent = target.label;
+        item.appendChild(title);
+
+        var row = document.createElement('div');
+        row.className = 'font-row';
+        var pathEl = document.createElement('div');
+        pathEl.className = 'font-path empty';
+        pathEl.id = 'fontPath-' + target.key;
+        var selectedPath = fontSettingsDraft.targets[target.key] || '';
+        if (selectedPath) {
+          pathEl.textContent = getFileName(selectedPath);
+          pathEl.title = selectedPath;
+          pathEl.classList.remove('empty');
+        } else {
+          pathEl.textContent = '使用原始字體';
+        }
+        row.appendChild(pathEl);
+
+        var choose = document.createElement('button');
+        choose.className = 'font-action';
+        choose.type = 'button';
+        choose.textContent = selectedPath ? '變更' : '選擇';
+        choose.setAttribute('data-font-key', target.key);
+        choose.addEventListener('click', function (event) {
+          chooseFontFile(event.currentTarget.getAttribute('data-font-key'));
+        });
+        row.appendChild(choose);
+
+        var clear = document.createElement('button');
+        clear.className = 'font-clear';
+        clear.type = 'button';
+        clear.textContent = '清除';
+        clear.setAttribute('data-font-key', target.key);
+        clear.style.display = selectedPath ? '' : 'none';
+        clear.addEventListener('click', function (event) {
+          clearFontFile(event.currentTarget.getAttribute('data-font-key'));
+        });
+        row.appendChild(clear);
+        item.appendChild(row);
+        root.appendChild(item);
+      }
+    }
+
+    function showFontError(msg) {
+      var el = document.getElementById('fontError');
+      if (el) el.textContent = msg || '';
+    }
+
+    function openFontModal() {
+      var api = getElectronAPI();
+      if (!api || typeof api.getFontOverrideSettings !== 'function') return;
+      showFontError('');
+      api.getFontOverrideSettings().then(function (settings) {
+        renderFontSettings(settings || { enabled: true, bold: '', heavy: '' });
+        document.getElementById('fontOverlay').classList.add('open');
+      });
+    }
+
+    function closeFontModal() {
+      document.getElementById('fontOverlay').classList.remove('open');
+    }
+
+    function chooseFontFile(role) {
+      var api = getElectronAPI();
+      if (!api || typeof api.selectFontOverrideFile !== 'function') return;
+      api.selectFontOverrideFile().then(function (filePath) {
+        if (!filePath) return;
+        fontSettingsDraft.targets[role] = filePath;
+        setFontPath(role, filePath);
+        renderFontVersionTabs();
+        renderFontTargetList();
+        showFontError('');
+      });
+    }
+
+    function clearFontFile(role) {
+      fontSettingsDraft.targets[role] = '';
+      setFontPath(role, '');
+      renderFontVersionTabs();
+      renderFontTargetList();
+    }
+
+    function saveFontSettings() {
+      var api = getElectronAPI();
+      if (!api || typeof api.setFontOverrideSettings !== 'function') return;
+      var btn = document.getElementById('fontSaveButton');
+      fontSettingsDraft.enabled = document.getElementById('fontEnabled').checked;
+      showFontError('');
+      btn.disabled = true;
+      api.setFontOverrideSettings(fontSettingsDraft).then(function (result) {
+        btn.disabled = false;
+        if (result === false || (result && result.error)) {
+          showFontError(result && result.error ? '儲存失敗：' + result.error : '儲存失敗，請確認字體檔案格式');
+          return;
+        }
+        renderFontSettings(result || fontSettingsDraft);
+        closeFontModal();
+      });
+    }
+
+    function openProxyModal() {
+      var api = getElectronAPI();
+      if (!api || typeof api.getProxySettings !== 'function') return;
+      api.getProxySettings().then(function (settings) {
+        if (!settings) return;
+        clearProxyError();
+        document.getElementById('proxyEnabled').checked = !!settings.enabled;
+        document.getElementById('proxyProtocol').value = settings.protocol === 'socks5' ? 'socks5' : 'http';
+        document.getElementById('proxyHost').value = settings.host || '';
+        document.getElementById('proxyPort').value = settings.port || '';
+        document.getElementById('proxyOverlay').classList.add('open');
+      });
+    }
+
+    function closeProxyModal() {
+      document.getElementById('proxyOverlay').classList.remove('open');
+    }
+
+    function showFieldError(inputId, errorId, msg) {
+      var input = document.getElementById(inputId);
+      var errorEl = document.getElementById(errorId);
+      if (input) input.classList.add('input-error');
+      if (errorEl) errorEl.textContent = msg;
+    }
+
+    function showProxyError(msg) {
+      var el = document.getElementById('proxyError');
+      if (el) el.textContent = msg;
+    }
+
+    function clearProxyError() {
+      ['proxyHost', 'proxyPort'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.classList.remove('input-error');
+      });
+      ['proxyHostError', 'proxyPortError', 'proxyError'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = '';
+      });
+    }
+
+    function saveProxySettings() {
+      var api = getElectronAPI();
+      if (!api || typeof api.setProxySettings !== 'function') return;
+      var enabled = document.getElementById('proxyEnabled').checked;
+      var host = document.getElementById('proxyHost').value.trim();
+      var portRaw = document.getElementById('proxyPort').value.trim();
+      var port = parseInt(portRaw, 10);
+
+      if (enabled) {
+        if (!host) { showFieldError('proxyHost', 'proxyHostError', '請輸入 Host'); return; }
+        if (isNaN(port) || port < 1 || port > 65535) { showFieldError('proxyPort', 'proxyPortError', 'Port 必須為 1–65535'); return; }
+      }
+
+      clearProxyError();
+      var protocol = document.getElementById('proxyProtocol').value;
+      var settings = { enabled: enabled, host: host, port: enabled ? String(port) : portRaw, protocol: protocol };
+      var btn = document.querySelector('.btn-save');
+      btn.disabled = true;
+      api.setProxySettings(settings).then(function (ok) {
+        btn.disabled = false;
+        if (ok !== false) {
+          updateProxyDot(settings.enabled && !!settings.host && !!settings.port);
+          closeProxyModal();
+        } else {
+          showProxyError('儲存失敗，請重試');
+        }
+      });
+    }
+
+    document.getElementById('proxyOverlay').addEventListener('click', function (e) {
+      if (e.target === this) closeProxyModal();
+    });
+
+    document.getElementById('fontOverlay').addEventListener('click', function (e) {
+      if (e.target === this) closeFontModal();
+    });
+
+    document.addEventListener('click', function (e) {
+      var menu = document.getElementById('erolabsUrlMenu');
+      if (!menu || !menu.classList.contains('open')) return;
+      if (menu.contains(e.target)) return;
+      closeErolabsUrlMenu();
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeErolabsUrlMenu();
+      if (e.key === 'Escape') closeFontModal();
+    });
+
+    // Load initial proxy dot state
+    (function () {
+      var api = getElectronAPI();
+      if (!api || typeof api.getProxySettings !== 'function') return;
+      api.getProxySettings().then(function (s) {
+        updateProxyDot(s && s.enabled && !!s.host && !!s.port);
+      });
+    })();
+
+    (function () {
+      var api = getElectronAPI();
+      if (!api || typeof api.getFontOverrideSettings !== 'function') return;
+      api.getFontOverrideSettings().then(function (settings) {
+        updateFontDot(settings || { enabled: true, bold: '', heavy: '' });
+      });
+    })();
+
+    // ====== Auto-redirect on load (safe, won't block function definitions above) ======
+    document.addEventListener('DOMContentLoaded', async function () {
+      try {
+        var erolabsBtn = document.querySelector('#erolabsButton');
+        if (erolabsBtn) erolabsBtn.addEventListener('contextmenu', erolabsSelector, false);
+
+        var urlParams = new URLSearchParams(window.location.search);
+        var reselect = urlParams.get('reselect');
+        var api = getElectronAPI();
+        if (reselect) {
+          if (api && typeof api.clearProviderState === 'function') {
+            await api.clearProviderState({ keepRuntimeProvider: false });
+          }
+          return;
+        }
+
+        if (!api || typeof api.getGameProviderState !== 'function') return;
+
+        var state = await api.getGameProviderState();
+        var savedDefaultProvider = getSavedDefaultProvider();
+        if (savedDefaultProvider && getProviderConfig(savedDefaultProvider)) {
+          void selectProvider(savedDefaultProvider);
+          return;
+        }
+        if (savedDefaultProvider) persistDefaultProvider(null);
+        if (!state || state.success !== true) return;
+
+        if (typeof state.entryUrl === 'string' && state.entryUrl) {
+          window.location.href = state.entryUrl;
+          return;
+        }
+
+        if (typeof state.defaultProvider === 'string' && state.defaultProvider) {
+          void selectProvider(state.defaultProvider);
+        }
+      } catch (e) {
+        console.error('[Selector] Init error:', e);
+      }
+    });
+  </script>
+</body>
