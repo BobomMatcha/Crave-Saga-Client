@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'unsafe-inline'; connect-src https://api.telegram.org https://discord.com https://discordapp.com; style-src 'unsafe-inline'">
+  <title>Notification Settings</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 20px;
+      user-select: none;
+    }
+
+    .section {
+      background: #2d2d2d;
+      border: 1px solid #3c3c3c;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .section-title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-title {
+      font-weight: 600;
+      color: #ffffff;
+      font-size: 13px;
+    }
+    .guide-btn {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: 12px;
+      color: #5b8ef0;
+      cursor: pointer;
+      font-weight: 400;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .guide-btn:hover { color: #8ab4f8; }
+
+    /* Guide panel */
+    .guide-panel {
+      display: none;
+      background: #1e1e1e;
+      border: 1px solid #3c3c3c;
+      border-radius: 6px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      line-height: 1.6;
+    }
+    .guide-panel.open { display: block; }
+    .guide-panel ol {
+      padding-left: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .guide-panel li { color: #c0c0c0; font-size: 12px; }
+    .guide-panel code {
+      background: #2d2d2d;
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-family: 'Menlo', 'Consolas', monospace;
+      font-size: 11px;
+      color: #d4d4d4;
+    }
+
+    /* Toggle switch */
+    .toggle { position: relative; width: 36px; height: 20px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; inset: 0;
+      background: #555; border-radius: 20px;
+      cursor: pointer; transition: background 0.2s;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 14px; height: 14px;
+      left: 3px; top: 3px;
+      background: #fff; border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle input:checked + .toggle-slider { background: #5865f2; }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(16px); }
+
+    /* Fields */
+    .section-body { display: flex; flex-direction: column; gap: 10px; }
+    .field label {
+      display: block;
+      font-size: 11px;
+      color: #888;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .field input[type="text"],
+    .field input[type="password"] {
+      width: 100%;
+      background: #1e1e1e;
+      border: 1px solid #4a4a4a;
+      border-radius: 5px;
+      color: #d4d4d4;
+      padding: 6px 9px;
+      font-size: 12px;
+      outline: none;
+      font-family: 'Menlo', 'Consolas', monospace;
+      transition: border-color 0.15s;
+    }
+    .field input:focus { border-color: #5865f2; }
+    .hint {
+      font-size: 11px;
+      color: #888;
+      margin-top: 3px;
+    }
+
+    /* Error */
+    #error-msg {
+      color: #f38ba8;
+      font-size: 12px;
+      min-height: 18px;
+      margin-bottom: 8px;
+      display: none;
+    }
+    #error-msg.visible { display: block; }
+
+    /* Buttons */
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    button {
+      padding: 6px 18px;
+      border-radius: 6px;
+      border: none;
+      font-size: 13px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: opacity 0.15s;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #btn-cancel { background: #3c3c3c; color: #d4d4d4; }
+    #btn-save   { background: #5865f2; color: #fff; }
+    #btn-save:hover:not(:disabled) { opacity: 0.9; }
+  </style>
+</head>
+<body>
+
+  <!-- Telegram -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title-row">
+        <span class="section-title">Telegram</span>
+        <button class="guide-btn" id="tg-guide-btn">Setup Guide</button>
+      </div>
+      <label class="toggle" title="Enable Telegram notifications">
+        <input type="checkbox" id="tg-enabled" />
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="guide-panel" id="tg-guide">
+      <ol>
+        <li>
+          Open Telegram, search for <code>@BotFather</code> and tap <strong>Start</strong>
+        </li>
+        <li>
+          Send <code>/newbot</code> and follow the prompts:
+          <br>· Enter a display name (e.g. <code>Crave Saga</code>)
+          <br>· Enter a username — must end with <code>bot</code> (e.g. <code>CraveSagaNotify_bot</code>)
+        </li>
+        <li>
+          BotFather will reply with your <strong>Bot Token</strong>. Copy it and paste it into the field below:
+          <br><code>123456789:ABCDefgh-XXXXXXXXXXXXXXXX</code>
+        </li>
+        <li>
+          Search for your bot's username in Telegram, open the chat and tap <strong>Start</strong>
+        </li>
+        <li>
+          Send any message to it (e.g. <code>hello</code>) — this is required before the bot can message you
+        </li>
+        <li>
+          Open the following URL in a browser, replacing <code>&lt;token&gt;</code> with the Bot Token from step 3:
+          <br><code>api.telegram.org/bot&lt;token&gt;/getUpdates</code>
+        </li>
+        <li>
+          In the returned JSON, find <code>result → message → from → id</code> — that number is your <strong>Chat ID</strong>. Paste it into the field below
+        </li>
+        <li>
+          Enable the toggle, then click Save — your phone will receive a confirmation notification
+        </li>
+      </ol>
+    </div>
+    <div class="section-body">
+      <div class="field">
+        <label>Bot Token</label>
+        <input type="password" id="tg-token" placeholder="123456789:ABCDEF..." autocomplete="off" />
+      </div>
+      <div class="field">
+        <label>Chat ID</label>
+        <input type="text" id="tg-chat" placeholder="e.g. 987654321" autocomplete="off" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Discord -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title-row">
+        <span class="section-title">Discord</span>
+        <button class="guide-btn" id="dc-guide-btn">Setup Guide</button>
+      </div>
+      <label class="toggle" title="Enable Discord notifications">
+        <input type="checkbox" id="dc-enabled" />
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="guide-panel" id="dc-guide">
+      <ol>
+        <li>In Discord, go to the channel where you want to receive notifications and open <strong>Channel Settings</strong></li>
+        <li>Navigate to <strong>Integrations → Webhooks → New Webhook</strong></li>
+        <li>Click <strong>Copy Webhook URL</strong> and paste it into the field below</li>
+        <li>Enable the toggle, then click Save — the channel will receive a confirmation message</li>
+      </ol>
+    </div>
+    <div class="section-body">
+      <div class="field">
+        <label>Webhook URL</label>
+        <input type="password" id="dc-webhook" placeholder="https://discord.com/api/webhooks/..." autocomplete="off" />
+      </div>
+    </div>
+  </div>
+
+  <div id="error-msg"></div>
+
+  <div class="actions">
+    <button id="btn-cancel">Cancel</button>
+    <button id="btn-save">Save</button>
+  </div>
+
+  <script>
+    const api = window.electronAPI;
+
+    // Guide toggles
+    document.getElementById('tg-guide-btn').addEventListener('click', () => {
+      const panel = document.getElementById('tg-guide');
+      const btn   = document.getElementById('tg-guide-btn');
+      const open  = panel.classList.toggle('open');
+      btn.textContent = open ? 'Hide' : 'Setup Guide';
+    });
+    document.getElementById('dc-guide-btn').addEventListener('click', () => {
+      const panel = document.getElementById('dc-guide');
+      const btn   = document.getElementById('dc-guide-btn');
+      const open  = panel.classList.toggle('open');
+      btn.textContent = open ? 'Hide' : 'Setup Guide';
+    });
+
+    const tgEnabled = document.getElementById('tg-enabled');
+    const tgToken   = document.getElementById('tg-token');
+    const tgChat    = document.getElementById('tg-chat');
+    const dcEnabled = document.getElementById('dc-enabled');
+    const dcWebhook = document.getElementById('dc-webhook');
+    const errorMsg  = document.getElementById('error-msg');
+    const btnSave   = document.getElementById('btn-save');
+    const btnCancel = document.getElementById('btn-cancel');
+
+    async function loadSettings() {
+      if (!api) return;
+      const mb = await api.getMobileNotifySettings();
+      if (!mb) return;
+      tgEnabled.checked = !!mb.telegram?.enabled;
+      tgToken.value     = mb.telegram?.botToken  || '';
+      tgChat.value      = mb.telegram?.chatId    || '';
+      dcEnabled.checked = !!mb.discord?.enabled;
+      dcWebhook.value   = mb.discord?.webhookUrl || '';
+    }
+
+    loadSettings();
+
+    function showError(msg) {
+      errorMsg.textContent = msg;
+      errorMsg.classList.add('visible');
+    }
+    function clearError() {
+      errorMsg.textContent = '';
+      errorMsg.classList.remove('visible');
+    }
+
+    async function validateTelegram(token, chatId) {
+      if (!/^\d+:[A-Za-z0-9_-]+$/.test(token)) throw new Error('Telegram: invalid bot token format');
+      const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+      if (!res.ok) throw new Error(`Telegram: server returned ${res.status}`);
+      const json = await res.json();
+      if (!json.ok) throw new Error('Telegram: invalid bot token');
+      const testRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text: '✅ Crave Saga notifications enabled!' })
+      });
+      if (!testRes.ok) {
+        const err = await testRes.json().catch(() => ({}));
+        throw new Error(`Telegram: ${err.description || `chat error ${testRes.status}`}`);
+      }
+    }
+
+    async function validateDiscord(webhookUrl) {
+      const u = new URL(webhookUrl);
+      if (!['discord.com', 'discordapp.com'].includes(u.hostname)) {
+        throw new Error('Discord: invalid webhook URL');
+      }
+      const res = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          embeds: [{ description: '✅ Crave Saga notifications enabled!', color: 0x5865F2 }]
+        })
+      });
+      if (res.status !== 204) throw new Error(`Discord: server returned ${res.status}`);
+    }
+
+    btnCancel.addEventListener('click', () => window.close());
+
+    btnSave.addEventListener('click', async () => {
+      clearError();
+      btnSave.disabled = true;
+      btnSave.textContent = 'Validating…';
+
+      const tgEn    = tgEnabled.checked;
+      const token   = tgToken.value.trim();
+      const chat    = tgChat.value.trim();
+      const dcEn    = dcEnabled.checked;
+      const webhook = dcWebhook.value.trim();
+
+      try {
+        if (tgEn) {
+          if (!token || !chat) throw new Error('Telegram: Bot Token and Chat ID are required');
+          await validateTelegram(token, chat);
+        }
+        if (dcEn) {
+          if (!webhook) throw new Error('Discord: Webhook URL is required');
+          await validateDiscord(webhook);
+        }
+      } catch (err) {
+        showError(err.message);
+        btnSave.disabled = false;
+        btnSave.textContent = 'Save';
+        return;
+      }
+
+      await api.setMobileNotifySettings({
+        telegram: { enabled: tgEn, botToken: token, chatId: chat },
+        discord:  { enabled: dcEn, webhookUrl: webhook }
+      });
+
+      window.close();
+    });
+  </script>
+</body>
+</html>

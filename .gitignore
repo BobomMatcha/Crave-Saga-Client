@@ -1,0 +1,11 @@
+node_modules/
+dist/
+cache/
+custom/
+.DS_Store
+*.log
+.codex/
+.vscode/
+.cache/
+__pycache__/
+*.pyc

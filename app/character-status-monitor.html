@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'">
+  <title>Character Status Monitor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      color-scheme: dark;
+      --bg: #1f1f20;
+      --panel: #292a2d;
+      --panel-strong: #313237;
+      --border: #44464d;
+      --text: #ededee;
+      --muted: #a6a8ae;
+      --soft: #d3d5da;
+      --accent: #4f8cff;
+      --accent-strong: #6da0ff;
+      --warn: #f1b35b;
+      --error: #ef7f8b;
+      --ok: #65c58b;
+    }
+
+    body {
+      min-width: 340px;
+      min-height: 520px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 12px;
+      line-height: 1.25;
+      user-select: none;
+    }
+
+    .shell {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px 8px;
+      border-bottom: 1px solid var(--border);
+      background: #242528;
+    }
+
+    .title-block {
+      min-width: 0;
+    }
+
+    h1 {
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 650;
+      letter-spacing: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .meta {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      min-height: 16px;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: var(--warn);
+    }
+    .status-dot.ok { background: var(--ok); }
+    .status-dot.error { background: var(--error); }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    button {
+      min-height: 26px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--panel-strong);
+      color: var(--text);
+      padding: 4px 9px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    button:hover { border-color: var(--accent); }
+    button:disabled { cursor: default; opacity: 0.62; }
+
+    main {
+      flex: 1;
+      padding: 8px;
+      overflow: auto;
+    }
+
+    .message {
+      display: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 12px;
+      color: var(--muted);
+    }
+    .message.visible { display: block; }
+    .message strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--text);
+      font-weight: 650;
+    }
+
+    .card-wrap {
+      display: none;
+    }
+
+    .card-wrap.visible {
+      display: grid;
+      gap: 8px;
+    }
+
+    .character-card {
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .character-card.empty {
+      color: var(--muted);
+    }
+
+    .card-top {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      padding: 7px 8px 6px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel-strong);
+    }
+
+    .slot-badge {
+      display: grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      background: #3a3c43;
+      color: var(--soft);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .card-name {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--text);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 650;
+      font-size: 13px;
+    }
+
+    .empty .card-name {
+      color: var(--muted);
+    }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 1px;
+      background: var(--border);
+    }
+
+    .stat-tile {
+      min-width: 0;
+      padding: 5px 6px;
+      background: var(--panel);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stat-label {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .stat-value {
+      display: block;
+      margin-top: 1px;
+      overflow: hidden;
+      color: var(--text);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+      font-weight: 750;
+      line-height: 1.15;
+    }
+
+    .minor .stat-value {
+      color: var(--muted);
+    }
+
+    @media (max-width: 360px) {
+      header {
+        grid-template-columns: 1fr;
+      }
+      .toolbar {
+        justify-content: space-between;
+      }
+      .stat-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="title-block">
+        <h1 id="title">Character Status</h1>
+        <div class="meta">
+          <span id="statusDot" class="status-dot"></span>
+          <span id="subtitle">Waiting for game data</span>
+        </div>
+      </div>
+      <div class="toolbar">
+        <button id="refreshButton" type="button" title="Refresh status now">Refresh</button>
+      </div>
+    </header>
+
+    <main id="content" aria-live="polite">
+      <div id="message" class="message visible">
+        <strong>No character detected</strong>
+        <span>Open a supported character, team, or ability screen.</span>
+      </div>
+      <div id="cardWrap" class="card-wrap" aria-label="Character status values"></div>
+    </main>
+  </div>
+
+  <script>
+    const api = window.electronAPI || {};
+    const title = document.getElementById('title');
+    const subtitle = document.getElementById('subtitle');
+    const statusDot = document.getElementById('statusDot');
+    const message = document.getElementById('message');
+    const cardWrap = document.getElementById('cardWrap');
+    const refreshButton = document.getElementById('refreshButton');
+    const statKeys = ['hp', 'atk', 'matk', 'def', 'mdef', 'spd', 'mind'];
+    const statLabels = {
+      hp: 'HP',
+      atk: 'ATK',
+      matk: 'MATK',
+      def: 'DEF',
+      mdef: 'MDEF',
+      spd: 'SPD',
+      mind: 'MIND'
+    };
+    let requestId = 0;
+    let pollTimer = null;
+    let lastSnapshotSignature = '';
+    let lastPartyCharacters = [];
+
+    function formatNumber(value) {
+      if (value == null || value === '') return '-';
+      const numberValue = Number(value);
+      if (!Number.isFinite(numberValue)) return '-';
+      return new Intl.NumberFormat('en-US').format(numberValue);
+    }
+
+    function formatTime(value) {
+      const date = value ? new Date(value) : new Date();
+      if (Number.isNaN(date.getTime())) return '--:--:--';
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    function sourceLabel(source) {
+      if (source === 'ability-panel-enabled-tree') return 'Ability panel';
+      if (source === 'deck-character-list') return 'Team';
+      if (source === 'deck-model') return 'Team';
+      if (source === 'cached-party') return 'Team · waiting';
+      if (source === 'runtime-character-model') return 'Runtime model';
+      return source || 'Status';
+    }
+
+    function setHeader(state, snapshot) {
+      statusDot.className = 'status-dot';
+      if (state === 'ok') statusDot.classList.add('ok');
+      if (state === 'error') statusDot.classList.add('error');
+
+      if (state === 'ok') {
+        const characters = snapshot.characters || [];
+        title.textContent = characters.length === 1
+          ? characters[0].name || 'Character Status'
+          : 'Party Status';
+        const sourceText = snapshot.source === 'ability-panel-enabled-tree' && characters.length > 1
+          ? 'Team · ability update'
+          : sourceLabel(snapshot.source);
+        subtitle.textContent = sourceText + ' · ' + formatTime(snapshot.capturedAt);
+        return;
+      }
+
+      title.textContent = 'Character Status';
+      subtitle.textContent = state === 'error'
+        ? 'No status source · ' + formatTime(snapshot && snapshot.capturedAt)
+        : 'Waiting for game data';
+    }
+
+    function renderMessage(snapshot) {
+      const reason = snapshot && typeof snapshot.reason === 'string'
+        ? snapshot.reason
+        : 'Open a supported character, team, or ability screen.';
+      message.innerHTML = '<strong>No character detected</strong><span></span>';
+      message.querySelector('span').textContent = reason;
+      message.classList.add('visible');
+      cardWrap.classList.remove('visible');
+      cardWrap.replaceChildren();
+    }
+
+    function createSnapshotSignature(snapshot) {
+      if (!snapshot || typeof snapshot !== 'object') return 'null';
+      const characters = Array.isArray(snapshot.characters) ? snapshot.characters : [];
+      return JSON.stringify({
+        ok: !!snapshot.ok,
+        error: snapshot.error || null,
+        source: snapshot.source || null,
+        reason: snapshot.reason || null,
+        characters: characters.map(function(character) {
+          return {
+            slot: character.slot == null ? null : character.slot,
+            name: character.name || null,
+            characterCd: character.characterCd || null,
+            characterId: character.characterId == null ? null : character.characterId,
+            isEmptySlot: !!character.isEmptySlot,
+            deckContextSource: character.deckContextSource || null,
+            hp: character.hp == null ? null : character.hp,
+            atk: character.atk == null ? null : character.atk,
+            matk: character.matk == null ? null : character.matk,
+            def: character.def == null ? null : character.def,
+            mdef: character.mdef == null ? null : character.mdef,
+            spd: character.spd == null ? null : character.spd,
+            mind: character.mind == null ? null : character.mind
+          };
+        })
+      });
+    }
+
+    function cloneCharacter(character) {
+      return Object.assign({}, character || {});
+    }
+
+    function hasCharacterIdentity(character) {
+      return !!(
+        character &&
+        !character.isEmptySlot &&
+        (character.name || character.characterCd || character.characterId != null)
+      );
+    }
+
+    function characterMatches(a, b) {
+      if (!a || !b) return false;
+      if (!hasCharacterIdentity(a) || !hasCharacterIdentity(b)) return false;
+      if (a.characterCd || b.characterCd) return !!(a.characterCd && b.characterCd && a.characterCd === b.characterCd);
+      if (a.characterId != null || b.characterId != null) return a.characterId != null && b.characterId != null && a.characterId === b.characterId;
+      if (a.name || b.name) return !!(a.name && b.name && a.name === b.name);
+      return false;
+    }
+
+    function mergeCharacter(base, update) {
+      const merged = cloneCharacter(base);
+      if (!hasCharacterIdentity(base) || !hasCharacterIdentity(update)) return merged;
+      for (const key of ['name', 'characterCd', 'characterId', 'deckContextSource', 'hp', 'atk', 'matk', 'def', 'mdef', 'spd', 'mind']) {
+        if (update[key] != null && update[key] !== '') merged[key] = update[key];
+      }
+      merged.isEmptySlot = false;
+      return merged;
+    }
+
+    function resolveDisplaySnapshot(snapshot) {
+      const characters = Array.isArray(snapshot && snapshot.characters) ? snapshot.characters : [];
+      if (snapshot && snapshot.ok && (snapshot.source === 'deck-character-list' || snapshot.source === 'deck-model') && characters.length > 0) {
+        lastPartyCharacters = characters.map(cloneCharacter);
+        return Object.assign({}, snapshot, { characters: lastPartyCharacters });
+      }
+
+      if (snapshot && snapshot.ok && snapshot.source === 'ability-panel-enabled-tree' && characters.length === 1 && lastPartyCharacters.length > 1) {
+        const updated = characters[0];
+        let matched = false;
+        const mergedParty = lastPartyCharacters.map(function(character) {
+          if (!characterMatches(character, updated)) return cloneCharacter(character);
+          matched = true;
+          return mergeCharacter(character, updated);
+        });
+        if (!matched && snapshot.source === 'ability-panel-enabled-tree' && updated.deckContextSource === 'awake-equipment-only') {
+          lastPartyCharacters = [];
+          return snapshot;
+        }
+        lastPartyCharacters = matched ? mergedParty : lastPartyCharacters;
+        return Object.assign({}, snapshot, {
+          source: snapshot.source === 'ability-panel-enabled-tree' ? 'ability-panel-enabled-tree' : 'cached-party',
+          characters: lastPartyCharacters
+        });
+      }
+
+      if (lastPartyCharacters.length > 1) {
+        return Object.assign({}, snapshot || {}, {
+          ok: true,
+          error: null,
+          source: 'cached-party',
+          capturedAt: snapshot && snapshot.capturedAt ? snapshot.capturedAt : new Date().toISOString(),
+          characters: lastPartyCharacters.map(cloneCharacter)
+        });
+      }
+
+      return snapshot || {};
+    }
+
+    function createStatTile(character, key, isEmptySlot) {
+      const tile = document.createElement('span');
+      const isMissing = isEmptySlot || character[key] == null;
+      tile.className = isMissing ? 'stat-tile minor' : 'stat-tile';
+      tile.title = statLabels[key] + ': ' + (isMissing ? '-' : formatNumber(character[key]));
+
+      const label = document.createElement('span');
+      label.className = 'stat-label';
+      label.textContent = statLabels[key];
+
+      const value = document.createElement('span');
+      value.className = 'stat-value';
+      value.textContent = isMissing ? '-' : formatNumber(character[key]);
+
+      tile.append(label, value);
+      return tile;
+    }
+
+    function createCharacterCard(character) {
+      const card = document.createElement('article');
+      const isEmptySlot = !!character.isEmptySlot || !hasCharacterIdentity(character);
+      card.className = isEmptySlot ? 'character-card empty' : 'character-card';
+      card.title = isEmptySlot ? 'Empty slot' : character.characterCd || character.name || '';
+
+      const top = document.createElement('div');
+      top.className = 'card-top';
+
+      const slot = document.createElement('span');
+      slot.className = 'slot-badge';
+      slot.textContent = character.slot == null ? '-' : String(character.slot);
+
+      const name = document.createElement('span');
+      name.className = 'card-name';
+      name.textContent = isEmptySlot ? 'Empty' : character.name || 'Unknown character';
+
+      const stats = document.createElement('div');
+      stats.className = 'stat-grid';
+      for (const key of statKeys) {
+        stats.appendChild(createStatTile(character, key, isEmptySlot));
+      }
+
+      top.append(slot, name);
+      card.append(top, stats);
+      return card;
+    }
+
+    function renderSnapshot(snapshot, options) {
+      const displaySnapshot = resolveDisplaySnapshot(snapshot);
+      const signature = createSnapshotSignature(displaySnapshot);
+      if (!options || !options.force) {
+        if (signature === lastSnapshotSignature) return;
+      }
+      lastSnapshotSignature = signature;
+
+      const characters = Array.isArray(displaySnapshot && displaySnapshot.characters) ? displaySnapshot.characters : [];
+      const ok = !!(displaySnapshot && displaySnapshot.ok && characters.length > 0);
+      setHeader(ok ? 'ok' : 'error', displaySnapshot || {});
+
+      if (!ok) {
+        renderMessage(displaySnapshot || {});
+        return;
+      }
+
+      message.classList.remove('visible');
+      cardWrap.classList.add('visible');
+      cardWrap.replaceChildren(...characters.map(createCharacterCard));
+    }
+
+    async function refreshSnapshot(options) {
+      const isManual = !!(options && options.manual);
+      if (typeof api.getCharacterStatusMonitorSnapshot !== 'function') {
+        renderSnapshot({
+          ok: false,
+          error: 'API_UNAVAILABLE',
+          capturedAt: new Date().toISOString(),
+          characters: [],
+          reason: 'Monitor API is unavailable.'
+        });
+        return;
+      }
+
+      const currentRequest = ++requestId;
+      if (isManual) refreshButton.disabled = true;
+      try {
+        const snapshot = await api.getCharacterStatusMonitorSnapshot();
+        if (currentRequest === requestId) renderSnapshot(snapshot, { force: isManual });
+      } catch (error) {
+        if (currentRequest === requestId) {
+          renderSnapshot({
+            ok: false,
+            error: 'SNAPSHOT_FAILED',
+            capturedAt: new Date().toISOString(),
+            characters: [],
+            reason: error && error.message ? error.message : String(error)
+          });
+        }
+      } finally {
+        if (currentRequest === requestId) {
+          if (isManual) refreshButton.disabled = false;
+        }
+      }
+    }
+
+    function startPolling() {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(() => {
+        if (document.visibilityState !== 'hidden') {
+          void refreshSnapshot();
+        }
+      }, 1000);
+    }
+
+    refreshButton.addEventListener('click', () => void refreshSnapshot({ manual: true }));
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'hidden') void refreshSnapshot();
+    });
+
+    setHeader('waiting', null);
+    void refreshSnapshot();
+    startPolling();
+  </script>
+</body>
+</html>
